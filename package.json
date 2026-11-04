@@ -3,5 +3,13 @@
   "private": true,
   "version": "0.0.0",
   "packageManager": "pnpm@12.16.1",
-  "engines": { "node": ">=26" }
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "infra:reset": "docker compose down -v && docker compose up -d --wait",
+    "infra:logs": "docker compose logs -f"
+  }
 }
