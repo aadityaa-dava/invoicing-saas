@@ -31,9 +31,9 @@ the current tenant.
 ## How it works
 
 1. Each request resolves the tenant from the authenticated user's membership.
-2. Inside a transaction, the API runs `SELECT set_config('app.tenant_id', $1, true)`
+2. Inside a transaction, the API runs `SELECT set_config('app.org_id', $1, true)`
    (the `true` makes it transaction-local, the equivalent of `SET LOCAL`).
-3. Policies compare `tenant_id = current_setting('app.tenant_id')::uuid`.
+3. Policies compare `tenant_id = current_setting('app.org_id')::uuid`.
 4. The API connects as a dedicated, non-owner role with no `BYPASSRLS`.
    Table owners and superusers skip RLS by default, so we also use
    `ALTER TABLE ... FORCE ROW LEVEL SECURITY`. Migrations run as a separate
