@@ -121,11 +121,59 @@ export class AuthService {
     return this.issueSession(user.id, randomUUID());
   }
 
+  // Rotation: the presented token is consumed and a new one is issued in the
+  // same family. If a token that was already used (or revoked mid-flight)
+  // shows up again, it may have been stolen, so the whole family is revoked.
+  async refresh(rawToken: string): Promise<SessionTokens> {
+    const tokenHash = this.tokens.hashToken(rawToken);
+    const existing = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
+    });
+    const now = new Date();
+    if (!existing || existing.revokedAt || existing.expiresAt <= now) {
+      throw new UnauthorizedException({ code: 'invalid_refresh_token' });
+    }
+
+    const rotated = await this.prisma.$transaction(async (tx) => {
+      // One conditional UPDATE decides who wins if two requests race.
+      const consumed = await tx.refreshToken.updateMany({
+        where: { id: existing.id, usedAt: null, revokedAt: null },
+        data: { usedAt: now },
+      });
+      if (consumed.count !== 1) return null;
+      return this.issueSession(existing.userId, existing.familyId, tx);
+    });
+
+    if (!rotated) {
+      // Revoked outside the transaction so it is not rolled back with it.
+      await this.revokeFamily(existing.familyId);
+      throw new UnauthorizedException({ code: 'refresh_token_reused' });
+    }
+    return rotated;
+  }
+
+  // Idempotent: logging out twice, or with no cookie, is not an error.
+  async logout(rawToken: string | undefined): Promise<void> {
+    if (!rawToken) return;
+    const existing = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash: this.tokens.hashToken(rawToken) },
+    });
+    if (existing) await this.revokeFamily(existing.familyId);
+  }
+
+  private async revokeFamily(familyId: string): Promise<void> {
+    await this.prisma.refreshToken.updateMany({
+      where: { familyId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   // A family groups every refresh token descended from one login, so a
   // detected theft can revoke the whole chain at once.
   private async issueSession(
     userId: string,
     familyId: string,
+    db: Prisma.TransactionClient = this.prisma,
   ): Promise<SessionTokens> {
     const { token: accessToken, expiresIn } =
       await this.tokens.signAccessToken(userId);
@@ -133,7 +181,7 @@ export class AuthService {
     const ttlDays = this.config.get('REFRESH_TOKEN_TTL_DAYS', { infer: true });
     const refreshExpiresAt = new Date(Date.now() + ttlDays * DAY_MS);
 
-    await this.prisma.refreshToken.create({
+    await db.refreshToken.create({
       data: {
         userId,
         familyId,
