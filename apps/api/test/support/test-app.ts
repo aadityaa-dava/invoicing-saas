@@ -10,9 +10,13 @@ import { RateLimitService } from '../../src/rate-limit/rate-limit.service';
 
 export class FakeMailService {
   verifications: { to: string; token: string }[] = [];
+  resets: { to: string; token: string }[] = [];
   existing: string[] = [];
   async sendVerificationEmail(to: string, token: string) {
     this.verifications.push({ to, token });
+  }
+  async sendPasswordResetEmail(to: string, token: string) {
+    this.resets.push({ to, token });
   }
   async sendAccountExistsEmail(to: string) {
     this.existing.push(to);
@@ -63,5 +67,9 @@ export async function registerAndLogin(
     .post('/v1/auth/login')
     .send({ email, password })
     .expect(200);
-  return { email, accessToken: res.body.accessToken as string };
+  const cookies = res.headers['set-cookie'] as unknown as string[];
+  const refreshToken = /refresh_token=([^;]+)/.exec(
+    cookies.find((c) => c.startsWith('refresh_token='))!,
+  )![1];
+  return { email, accessToken: res.body.accessToken as string, refreshToken };
 }
