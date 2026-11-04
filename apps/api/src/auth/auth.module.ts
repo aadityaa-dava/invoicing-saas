@@ -4,12 +4,14 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import type { Env } from '../config/env';
 import { MailService } from '../mail/mail.service';
+import { AccountRecoveryService } from './account-recovery.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { LoginThrottleService } from './login-throttle.service';
 import { MeController } from './me.controller';
 import { PasswordService } from './password.service';
+import { RecoveryController } from './recovery.controller';
 import { TokenService } from './token.service';
 
 @Module({
@@ -21,12 +23,13 @@ import { TokenService } from './token.service';
       }),
     }),
   ],
-  controllers: [AuthController, MeController],
+  controllers: [AuthController, RecoveryController, MeController],
   providers: [
     PasswordService,
     TokenService,
     MailService,
     AuthService,
+    AccountRecoveryService,
     LoginThrottleService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
