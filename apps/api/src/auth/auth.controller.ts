@@ -13,8 +13,10 @@ import type { Request, Response } from 'express';
 import type { z } from 'zod';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import type { Env } from '../config/env';
+import { RateLimit } from '../rate-limit/rate-limit.decorator';
 import { loginSchema, signupSchema, verifyEmailSchema } from './auth.dto';
 import { AuthService, SessionTokens } from './auth.service';
+import { LoginThrottleService } from './login-throttle.service';
 import { Public } from './public.decorator';
 
 export const REFRESH_COOKIE = 'refresh_token';
@@ -25,11 +27,13 @@ const COOKIE_PATH = '/v1/auth';
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly throttle: LoginThrottleService,
     private readonly config: ConfigService<Env, true>,
   ) {}
 
   @Post('signup')
   @HttpCode(202)
+  @RateLimit({ name: 'signup', limit: 20, windowSeconds: 3600 })
   async signup(
     @Body(new ZodValidationPipe(signupSchema))
     body: z.infer<typeof signupSchema>,
@@ -43,6 +47,7 @@ export class AuthController {
 
   @Post('verify-email')
   @HttpCode(200)
+  @RateLimit({ name: 'verify-email', limit: 10, windowSeconds: 60 })
   async verifyEmail(
     @Body(new ZodValidationPipe(verifyEmailSchema))
     body: z.infer<typeof verifyEmailSchema>,
@@ -53,17 +58,30 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(200)
+  @RateLimit({ name: 'login', limit: 10, windowSeconds: 60 })
   async login(
     @Body(new ZodValidationPipe(loginSchema))
     body: z.infer<typeof loginSchema>,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ accessToken: string; expiresIn: number }> {
-    const session = await this.auth.login(body.email, body.password);
+    // Checked before any password work, so a locked account costs us nothing.
+    await this.throttle.assertAllowed(body.email);
+    let session: SessionTokens;
+    try {
+      session = await this.auth.login(body.email, body.password);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        await this.throttle.recordFailure(body.email);
+      }
+      throw error;
+    }
+    await this.throttle.recordSuccess(body.email);
     return this.respondWithSession(res, session);
   }
 
   @Post('refresh')
   @HttpCode(200)
+  @RateLimit({ name: 'refresh', limit: 30, windowSeconds: 60 })
   async refresh(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,

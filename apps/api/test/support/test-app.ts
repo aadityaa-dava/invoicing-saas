@@ -6,6 +6,7 @@ import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/app.setup';
 import { MailService } from '../../src/mail/mail.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { RateLimitService } from '../../src/rate-limit/rate-limit.service';
 
 export class FakeMailService {
   verifications: { to: string; token: string }[] = [];
@@ -29,10 +30,23 @@ export async function createTestApp() {
   const app: INestApplication = moduleFixture.createNestApplication();
   configureApp(app);
   await app.init();
-  return { app, mail, prisma: app.get(PrismaService) };
+  const t = { app, mail, prisma: app.get(PrismaService) };
+  isolateRateLimits(t);
+  return t;
 }
 
-export type TestApp = Awaited<ReturnType<typeof createTestApp>>;
+export type TestApp = {
+  app: INestApplication;
+  mail: FakeMailService;
+  prisma: PrismaService;
+};
+
+// Gives the app a fresh set of rate-limit counters, so tests and test runs
+// never share state through Redis.
+export function isolateRateLimits(t: TestApp): void {
+  t.app.get(RateLimitService, { strict: false }).keyPrefix =
+    `rl-test-${randomUUID()}`;
+}
 
 // Registers, verifies and logs in a brand-new user through the real API.
 export async function registerAndLogin(

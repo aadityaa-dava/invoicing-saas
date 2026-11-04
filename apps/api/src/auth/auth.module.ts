@@ -7,6 +7,7 @@ import { MailService } from '../mail/mail.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { LoginThrottleService } from './login-throttle.service';
 import { MeController } from './me.controller';
 import { PasswordService } from './password.service';
 import { TokenService } from './token.service';
@@ -26,6 +27,7 @@ import { TokenService } from './token.service';
     TokenService,
     MailService,
     AuthService,
+    LoginThrottleService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })
