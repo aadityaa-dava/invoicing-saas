@@ -1,3 +1,5 @@
+import { TenancyModule } from './tenancy/tenancy.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
@@ -20,6 +22,8 @@ import { RedisModule } from './redis/redis.module';
     RedisModule,
     RateLimitModule,
     AuthModule,
+    TenancyModule,
+    OrganizationsModule,
   ],
   controllers: [HealthController],
 })
