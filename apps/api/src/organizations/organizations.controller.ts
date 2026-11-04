@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post } from '@nestjs/common';
 import type { AuthUser, OrgMembership } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { AnyMember } from '../rbac/require-permission.decorator';
 import { CurrentMembership } from '../tenancy/current-membership.decorator';
 import {
   createOrganizationSchema,
@@ -27,8 +28,9 @@ export class OrganizationsController {
     return this.orgs.listMine(user.id);
   }
 
-  // Membership is verified by OrgMembershipGuard before this runs.
+  // Any member may read their own organization.
   @Get(':orgId')
+  @AnyMember()
   get(
     @CurrentUser() user: AuthUser,
     @CurrentMembership() membership: OrgMembership,

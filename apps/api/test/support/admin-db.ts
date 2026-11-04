@@ -24,3 +24,18 @@ export async function deleteOrganizations(pool: Pool, ids: string[]) {
     ids,
   ]);
 }
+
+// Adds a membership directly, bypassing the API. The member-management
+// endpoints do not exist yet, and tests need users with specific roles.
+export async function addMember(
+  pool: Pool,
+  orgId: string,
+  userId: string,
+  role: 'admin' | 'member' | 'viewer',
+) {
+  await pool.query(
+    `INSERT INTO memberships (id, org_id, user_id, role)
+     VALUES (gen_random_uuid(), $1, $2, $3)`,
+    [orgId, userId, role],
+  );
+}
