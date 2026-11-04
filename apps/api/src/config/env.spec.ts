@@ -4,12 +4,15 @@ describe('validateEnv', () => {
   const valid = {
     DATABASE_URL: 'postgresql://u:p@localhost:5433/db',
     REDIS_URL: 'redis://localhost:6380',
+    JWT_ACCESS_SECRET: 'x'.repeat(32),
   };
 
   it('applies defaults', () => {
     const env = validateEnv(valid);
     expect(env.PORT).toBe(4000);
     expect(env.NODE_ENV).toBe('development');
+    expect(env.ACCESS_TOKEN_TTL_SECONDS).toBe(900);
+    expect(env.REFRESH_TOKEN_TTL_DAYS).toBe(7);
   });
 
   it('coerces PORT from a string', () => {
@@ -17,9 +20,14 @@ describe('validateEnv', () => {
   });
 
   it('rejects a missing DATABASE_URL', () => {
-    expect(() => validateEnv({ REDIS_URL: valid.REDIS_URL })).toThrow(
-      /DATABASE_URL/,
-    );
+    const { DATABASE_URL: _omitted, ...rest } = valid;
+    expect(() => validateEnv(rest)).toThrow(/DATABASE_URL/);
+  });
+
+  it('rejects a JWT secret shorter than 32 characters', () => {
+    expect(() =>
+      validateEnv({ ...valid, JWT_ACCESS_SECRET: 'too-short' }),
+    ).toThrow(/JWT_ACCESS_SECRET/);
   });
 
   it('never includes the offending value in the error message', () => {
