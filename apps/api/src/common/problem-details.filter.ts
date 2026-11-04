@@ -24,6 +24,9 @@ export class ProblemDetailsFilter implements ExceptionFilter {
           ? (body as Record<string, unknown>)
           : {};
       const name = HttpStatus[status] ?? 'ERROR';
+      if (typeof payload.retryAfterSeconds === 'number') {
+        response.setHeader('Retry-After', String(payload.retryAfterSeconds));
+      }
       response
         .status(status)
         .type('application/problem+json')
