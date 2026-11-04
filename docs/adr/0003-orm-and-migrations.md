@@ -26,7 +26,7 @@ Prisma with SQL migrations (`prisma migrate`).
   SQL files that are edited by hand and committed. Prisma does not model RLS in
   its schema, so the SQL files are the source of truth for it.
 - Tenant context: a single service wraps tenant-scoped work in an interactive
-  transaction (`$transaction`), runs `set_config('app.tenant_id', ..., true)`
+  transaction (`$transaction`), runs `set_config('app.org_id', ..., true)`
   first, then runs the queries on the transaction client. Controllers and
   services never use the base client for tenant data.
 - Two database roles:

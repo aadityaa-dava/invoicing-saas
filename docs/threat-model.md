@@ -53,3 +53,14 @@ Stripe to our webhook endpoint, API to the email provider, CI/CD to hosting.
 - Free-tier infrastructure: no WAF, limited backups, no formal pen test.
 - A compromised database host or cloud account is outside this model.
 - No DDoS protection beyond what the hosting provider includes.
+
+- Authorization race window: the membership and permission guards run in a
+  separate transaction from the handler. An actor demoted in that few
+  millisecond gap can complete one action under their old role. Impact is
+  bounded because the last-owner invariant is enforced under a row lock inside
+  the handler's own transaction (ADR-0004).
+- Account existence disclosure: adding a member by email returns a distinct
+  error for unknown or unverified addresses, so an owner or admin can learn
+  whether an address is registered. Accepted for v1 because the caller is an
+  authenticated administrator and there is no invitation flow yet. An emailed
+  invitation would remove it.
