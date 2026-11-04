@@ -1,3 +1,4 @@
+import { ClientsModule } from './clients/clients.module';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { Module } from '@nestjs/common';
@@ -24,6 +25,7 @@ import { RedisModule } from './redis/redis.module';
     AuthModule,
     TenancyModule,
     OrganizationsModule,
+    ClientsModule,
   ],
   controllers: [HealthController],
 })
