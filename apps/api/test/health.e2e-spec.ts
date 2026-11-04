@@ -29,6 +29,13 @@ describe('Health (e2e)', () => {
       .expect({ status: 'ok' });
   });
 
+  it('GET /health/ready reports the database as up', () => {
+    return request(app.getHttpServer())
+      .get('/health/ready')
+      .expect(200)
+      .expect({ status: 'ok', checks: { database: 'up' } });
+  });
+
   it('returns 404 for unknown routes', () => {
     return request(app.getHttpServer()).get('/v1/nope').expect(404);
   });
