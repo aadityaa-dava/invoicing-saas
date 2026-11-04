@@ -25,6 +25,7 @@ model User {
 
   refreshTokens RefreshToken[]
   authTokens    AuthToken[]
+  memberships   Membership[]
 
   @@map("users")
 }
@@ -60,4 +61,59 @@ model AuthToken {
 
   @@index([userId])
   @@map("auth_tokens")
+}
+
+enum MembershipRole {
+  OWNER  @map("owner")
+  ADMIN  @map("admin")
+  MEMBER @map("member")
+  VIEWER @map("viewer")
+
+  @@map("membership_role")
+}
+
+model Organization {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  name             String
+  slug             String   @unique
+  stripeCustomerId String?  @map("stripe_customer_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  memberships Membership[]
+  clients     Client[]
+
+  @@map("organizations")
+}
+
+model Membership {
+  id        String         @id @default(uuid(7)) @db.Uuid
+  orgId     String         @map("org_id") @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  role      MembershipRole
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Client {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  orgId          String    @map("org_id") @db.Uuid
+  name           String
+  email          String?
+  billingAddress String?   @map("billing_address")
+  taxId          String?   @map("tax_id")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@map("clients")
 }
