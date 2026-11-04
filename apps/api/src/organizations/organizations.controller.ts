@@ -1,12 +1,17 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
 import type { AuthUser, OrgMembership } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { AnyMember } from '../rbac/require-permission.decorator';
+import {
+  AnyMember,
+  RequirePermission,
+} from '../rbac/require-permission.decorator';
 import { CurrentMembership } from '../tenancy/current-membership.decorator';
 import {
   createOrganizationSchema,
+  updateOrganizationSchema,
   type CreateOrganizationDto,
+  type UpdateOrganizationDto,
 } from './organizations.dto';
 import { OrganizationsService } from './organizations.service';
 
@@ -36,5 +41,16 @@ export class OrganizationsController {
     @CurrentMembership() membership: OrgMembership,
   ) {
     return this.orgs.get(user.id, membership.orgId, membership.role);
+  }
+
+  @Patch(':orgId')
+  @RequirePermission('org:update')
+  update(
+    @CurrentUser() user: AuthUser,
+    @CurrentMembership() membership: OrgMembership,
+    @Body(new ZodValidationPipe(updateOrganizationSchema))
+    body: UpdateOrganizationDto,
+  ) {
+    return this.orgs.update(user.id, membership.orgId, body.name);
   }
 }

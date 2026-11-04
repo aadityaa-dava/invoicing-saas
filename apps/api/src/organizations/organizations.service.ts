@@ -61,4 +61,15 @@ export class OrganizationsService {
     if (!org) throw new NotFoundException({ code: 'not_found' });
     return { ...org, role: role.toLowerCase() };
   }
+
+  // Renames only. The slug stays stable so existing URLs keep working.
+  update(userId: string, orgId: string, name: string) {
+    return this.tenantDb.run({ userId, orgId }, (tx) =>
+      tx.organization.update({
+        where: { id: orgId },
+        data: { name },
+        select: { id: true, name: true, slug: true, createdAt: true },
+      }),
+    );
+  }
 }
