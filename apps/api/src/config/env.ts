@@ -7,6 +7,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
+  JWT_ACCESS_SECRET: z.string().min(32),
+  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
 });
 
 export type Env = z.infer<typeof envSchema>;
