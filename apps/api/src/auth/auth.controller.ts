@@ -15,10 +15,12 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import type { Env } from '../config/env';
 import { loginSchema, signupSchema, verifyEmailSchema } from './auth.dto';
 import { AuthService, SessionTokens } from './auth.service';
+import { Public } from './public.decorator';
 
 export const REFRESH_COOKIE = 'refresh_token';
 const COOKIE_PATH = '/v1/auth';
 
+@Public()
 @Controller('auth')
 export class AuthController {
   constructor(

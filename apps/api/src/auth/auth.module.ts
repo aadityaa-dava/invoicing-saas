@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import type { Env } from '../config/env';
 import { MailService } from '../mail/mail.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { MeController } from './me.controller';
 import { PasswordService } from './password.service';
 import { TokenService } from './token.service';
 
@@ -17,7 +20,13 @@ import { TokenService } from './token.service';
       }),
     }),
   ],
-  controllers: [AuthController],
-  providers: [PasswordService, TokenService, MailService, AuthService],
+  controllers: [AuthController, MeController],
+  providers: [
+    PasswordService,
+    TokenService,
+    MailService,
+    AuthService,
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+  ],
 })
 export class AuthModule {}
