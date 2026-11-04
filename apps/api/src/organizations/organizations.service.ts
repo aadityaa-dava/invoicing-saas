@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
+import type { MembershipRole } from '../generated/prisma/client';
 import { TenantDb } from '../tenancy/tenant-db.service';
 
 function slugify(name: string): string {
@@ -48,5 +49,16 @@ export class OrganizationsService {
       }),
     );
     return rows.map((r) => ({ ...r.org, role: r.role.toLowerCase() }));
+  }
+
+  async get(userId: string, orgId: string, role: MembershipRole) {
+    const org = await this.tenantDb.run({ userId, orgId }, (tx) =>
+      tx.organization.findUnique({
+        where: { id: orgId },
+        select: { id: true, name: true, slug: true, createdAt: true },
+      }),
+    );
+    if (!org) throw new NotFoundException({ code: 'not_found' });
+    return { ...org, role: role.toLowerCase() };
   }
 }
