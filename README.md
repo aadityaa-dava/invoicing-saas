@@ -1,5 +1,3 @@
-
-Readme · MD
 # Invoicing SaaS
  
 A multi-tenant invoicing and subscription billing platform. Organizations manage
