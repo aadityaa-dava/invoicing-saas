@@ -8,7 +8,10 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import type { AuthUser, OrgMembership } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -23,6 +26,7 @@ import {
   type ListInvoicesQuery,
   type UpdateInvoiceDto,
 } from './invoices.dto';
+import { pdfLabels, renderInvoicePdf } from './invoice-pdf';
 import { InvoicesService } from './invoices.service';
 
 const idPipe = new ZodValidationPipe(invoiceIdParamSchema);
@@ -104,5 +108,24 @@ export class InvoicesController {
     @Param('id', idPipe) id: string,
   ) {
     return this.invoices.voidInvoice(user.id, m.orgId, id);
+  }
+
+  // Private financial document: never cached by shared caches.
+  @Get(':id/pdf')
+  @RequirePermission('invoice:read')
+  async pdf(
+    @CurrentUser() user: AuthUser,
+    @CurrentMembership() m: OrgMembership,
+    @Param('id', idPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const data = await this.invoices.getPdfData(user.id, m.orgId, id);
+    const buffer = await renderInvoicePdf(data);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${pdfLabels(data.invoice).filename}"`,
+      'Cache-Control': 'no-store',
+    });
+    return new StreamableFile(buffer);
   }
 }

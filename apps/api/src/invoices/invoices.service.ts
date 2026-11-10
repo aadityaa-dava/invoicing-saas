@@ -205,6 +205,31 @@ export class InvoicesService {
     });
   }
 
+  // Everything the PDF needs, read in one transaction. The client is looked up
+  // even if it was soft-deleted since: an issued invoice must stay printable.
+  getPdfData(userId: string, orgId: string, id: string) {
+    return this.tenantDb.run({ userId, orgId }, async (tx) => {
+      const invoice = await tx.invoice.findFirst({
+        where: { id, deletedAt: null },
+        include: { lineItems: true },
+      });
+      if (!invoice) throw notFound();
+      const org = await tx.organization.findUnique({
+        where: { id: orgId },
+        select: { name: true },
+      });
+      const client = await tx.client.findFirst({
+        where: { id: invoice.clientId },
+        select: { name: true, email: true, billingAddress: true, taxId: true },
+      });
+      return {
+        organizationName: org?.name ?? '',
+        client,
+        invoice: toApi(invoice),
+      };
+    });
+  }
+
   // --- helpers ------------------------------------------------------------
 
   private computeLines(items: readonly LineInput[]) {
