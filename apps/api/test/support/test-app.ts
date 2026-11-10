@@ -24,6 +24,8 @@ export class FakeMailService {
 }
 
 export async function createTestApp() {
+  // Mail jobs are consumed only by the mail-queue suite, never by other suites.
+  process.env.RUN_WORKERS = 'false';
   const mail = new FakeMailService();
   const moduleFixture = await Test.createTestingModule({
     imports: [AppModule],

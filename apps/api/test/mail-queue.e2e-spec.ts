@@ -32,6 +32,7 @@ async function waitFor<T>(
 async function buildApp(
   transport?: { sendMail: () => Promise<unknown> },
 ): Promise<INestApplication> {
+  process.env.RUN_WORKERS = 'true';
   let builder = Test.createTestingModule({
     imports: [
       ConfigModule.forRoot({
