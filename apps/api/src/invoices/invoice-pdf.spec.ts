@@ -110,3 +110,57 @@ describe('renderInvoicePdf', () => {
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
   });
 });
+
+// Optional visual review. Run with:
+//   SAMPLE_PDF_DIR=/tmp/invoice-samples pnpm --filter api test -- invoice-pdf
+import { mkdirSync, writeFileSync } from 'node:fs';
+
+const sampleDir = process.env.SAMPLE_PDF_DIR;
+(sampleDir ? describe : describe.skip)('sample output for visual review', () => {
+  it('writes sample PDFs', async () => {
+    const dir = sampleDir as string;
+    mkdirSync(dir, { recursive: true });
+
+    const realistic = [
+      {
+        description: 'Website redesign: discovery workshop and requirements',
+        quantity: '1.5',
+        unitPriceCents: 15000,
+        taxRateBps: 825,
+        lineTotalCents: 22500,
+      },
+      {
+        description: 'Hosting and maintenance (12 months)',
+        quantity: '12',
+        unitPriceCents: 2500,
+        taxRateBps: 0,
+        lineTotalCents: 30000,
+      },
+      {
+        description:
+          'Custom integration with the customer billing system, including testing, documentation and two rounds of revisions',
+        quantity: '1',
+        unitPriceCents: 4999,
+        taxRateBps: 1000,
+        lineTotalCents: 4999,
+      },
+    ];
+    const base = {
+      lineItems: realistic,
+      subtotalCents: 57499,
+      taxCents: 2356,
+      totalCents: 59855,
+    };
+
+    const many = Array.from({ length: 60 }, (_, i) => line(i + 1));
+    const files: [string, InvoicePdfData][] = [
+      ['sent.pdf', sample({ ...base })],
+      ['draft.pdf', sample({ ...base, number: null, status: 'draft' })],
+      ['void.pdf', sample({ ...base, status: 'void' })],
+      ['long.pdf', sample({ lineItems: many, subtotalCents: 60000, taxCents: 4950, totalCents: 64950 })],
+    ];
+    for (const [name, data] of files) {
+      writeFileSync(`${dir}/${name}`, await renderInvoicePdf(data));
+    }
+  });
+});
