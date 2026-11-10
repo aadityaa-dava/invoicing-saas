@@ -39,3 +39,9 @@ export async function addMember(
     [orgId, userId, role],
   );
 }
+
+// Connection as the restricted application role (what the API runs as).
+// One connection only, so tenant context cannot leak between statements.
+export function createAppPool(): Pool {
+  return new Pool({ connectionString: env.DATABASE_URL, max: 1 });
+}
