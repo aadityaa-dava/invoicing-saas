@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import type { Env } from '../config/env';
-import { MailService } from '../mail/mail.service';
+import { MailModule } from '../mail/mail.module';
 import { AccountRecoveryService } from './account-recovery.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -16,6 +16,7 @@ import { TokenService } from './token.service';
 
 @Module({
   imports: [
+    MailModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => ({
@@ -27,7 +28,6 @@ import { TokenService } from './token.service';
   providers: [
     PasswordService,
     TokenService,
-    MailService,
     AuthService,
     AccountRecoveryService,
     LoginThrottleService,

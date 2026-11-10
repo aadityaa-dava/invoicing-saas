@@ -1,34 +1,28 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import type { Env } from '../config/env';
+import { Inject, Injectable } from '@nestjs/common';
+import type { Queue } from 'bullmq';
+import { EMAIL_QUEUE } from '../queue/queue.constants';
+import { MAIL_JOB_NAME, type MailJob } from './mail.types';
 
-// Development stub. Phase 7 replaces this with queued, retried delivery.
+// Enqueues mail instead of sending it inline: the request returns as soon as
+// the job is stored in Redis, SMTP slowness never reaches the caller, and the
+// worker retries failures with backoff.
 @Injectable()
 export class MailService {
-  private readonly logger = new Logger(MailService.name);
+  constructor(@Inject(EMAIL_QUEUE) private readonly queue: Queue<MailJob>) {}
 
-  constructor(private readonly config: ConfigService<Env, true>) {}
-
-  private get isProduction(): boolean {
-    return this.config.get('NODE_ENV', { infer: true }) === 'production';
+  private async enqueue(job: MailJob): Promise<void> {
+    await this.queue.add(MAIL_JOB_NAME, job);
   }
 
-  private get webUrl(): string {
-    return this.config.get('WEB_URL', { infer: true });
+  sendVerificationEmail(to: string, token: string): Promise<void> {
+    return this.enqueue({ kind: 'verify-email', to, token });
   }
 
-  async sendVerificationEmail(to: string, token: string): Promise<void> {
-    if (this.isProduction) return;
-    this.logger.log(`[dev mail] verify ${to}: ${this.webUrl}/verify-email?token=${token}`);
+  sendPasswordResetEmail(to: string, token: string): Promise<void> {
+    return this.enqueue({ kind: 'password-reset', to, token });
   }
 
-  async sendPasswordResetEmail(to: string, token: string): Promise<void> {
-    if (this.isProduction) return;
-    this.logger.log(`[dev mail] reset ${to}: ${this.webUrl}/reset-password?token=${token}`);
-  }
-
-  async sendAccountExistsEmail(to: string): Promise<void> {
-    if (this.isProduction) return;
-    this.logger.log(`[dev mail] ${to} already has an account`);
+  sendAccountExistsEmail(to: string): Promise<void> {
+    return this.enqueue({ kind: 'account-exists', to });
   }
 }

@@ -1,4 +1,5 @@
 import request from 'supertest';
+import type { Response } from 'supertest';
 import type { Pool } from 'pg';
 import {
   addMember,
@@ -19,7 +20,7 @@ interface Org {
 
 // Collects a binary response body into a Buffer.
 const binary = (
-  res: NodeJS.ReadableStream,
+  res: Response,
   callback: (error: Error | null, body: Buffer) => void,
 ) => {
   const chunks: Buffer[] = [];
