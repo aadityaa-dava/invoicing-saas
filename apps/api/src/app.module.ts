@@ -1,3 +1,4 @@
+import { InvoicesModule } from './invoices/invoices.module';
 import { ClientsModule } from './clients/clients.module';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { OrganizationsModule } from './organizations/organizations.module';
@@ -26,6 +27,7 @@ import { RedisModule } from './redis/redis.module';
     TenancyModule,
     OrganizationsModule,
     ClientsModule,
+    InvoicesModule,
   ],
   controllers: [HealthController],
 })
