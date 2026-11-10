@@ -1,4 +1,4 @@
-import type { MailJob } from './mail.types';
+import type { SimpleMailJob } from './mail.types';
 
 export interface RenderedMail {
   to: string;
@@ -6,7 +6,7 @@ export interface RenderedMail {
   text: string;
 }
 
-export function renderMail(job: MailJob, webUrl: string): RenderedMail {
+export function renderMail(job: SimpleMailJob, webUrl: string): RenderedMail {
   switch (job.kind) {
     case 'verify-email':
       return {

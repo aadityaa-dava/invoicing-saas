@@ -5,7 +5,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 export type TenantTx = Prisma.TransactionClient;
 
 export interface TenantContext {
-  userId: string;
+  // Absent for system work (background jobs), which run under an org only.
+  userId?: string;
   orgId?: string;
 }
 
@@ -24,8 +25,13 @@ export class TenantDb {
   constructor(private readonly prisma: PrismaService) {}
 
   run<T>(ctx: TenantContext, fn: (tx: TenantTx) => Promise<T>): Promise<T> {
+    if (!ctx.userId && !ctx.orgId) {
+      throw new Error('TenantContext needs a userId or an orgId');
+    }
     return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.user_id', ${ctx.userId}, true)`;
+      if (ctx.userId) {
+        await tx.$executeRaw`SELECT set_config('app.user_id', ${ctx.userId}, true)`;
+      }
       if (ctx.orgId) {
         await tx.$executeRaw`SELECT set_config('app.org_id', ${ctx.orgId}, true)`;
       }

@@ -12,11 +12,15 @@ export class FakeMailService {
   verifications: { to: string; token: string }[] = [];
   resets: { to: string; token: string }[] = [];
   existing: string[] = [];
+  invoiceEmails: { orgId: string; invoiceId: string }[] = [];
   async sendVerificationEmail(to: string, token: string) {
     this.verifications.push({ to, token });
   }
   async sendPasswordResetEmail(to: string, token: string) {
     this.resets.push({ to, token });
+  }
+  async sendInvoiceEmail(orgId: string, invoiceId: string) {
+    this.invoiceEmails.push({ orgId, invoiceId });
   }
   async sendAccountExistsEmail(to: string) {
     this.existing.push(to);
@@ -62,8 +66,9 @@ export async function registerAndLogin(
   const email = `${randomUUID()}@example.test`;
   const http = () => request(t.app.getHttpServer());
   await http().post('/v1/auth/signup').send({ email, password }).expect(202);
-  const token = t.mail.verifications.filter((m) => m.to === email).at(-1)!
-    .token;
+  const token = t.mail.verifications
+    .filter((m) => m.to === email)
+    .at(-1)!.token;
   await http().post('/v1/auth/verify-email').send({ token }).expect(200);
   const res = await http()
     .post('/v1/auth/login')

@@ -5,6 +5,8 @@ import type { Queue } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 import { validateEnv, type Env } from '../src/config/env';
 import { MailModule } from '../src/mail/mail.module';
+import { PrismaModule } from '../src/prisma/prisma.module';
+import { TenancyModule } from '../src/tenancy/tenancy.module';
 import { MailService } from '../src/mail/mail.service';
 import {
   MAIL_JOB_NAME,
@@ -24,14 +26,15 @@ async function waitFor<T>(
   for (;;) {
     const value = await probe();
     if (value !== undefined) return value;
-    if (Date.now() > deadline) throw new Error('timed out waiting for condition');
+    if (Date.now() > deadline)
+      throw new Error('timed out waiting for condition');
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
 
-async function buildApp(
-  transport?: { sendMail: () => Promise<unknown> },
-): Promise<INestApplication> {
+async function buildApp(transport?: {
+  sendMail: () => Promise<unknown>;
+}): Promise<INestApplication> {
   process.env.RUN_WORKERS = 'true';
   let builder = Test.createTestingModule({
     imports: [
@@ -40,6 +43,8 @@ async function buildApp(
         envFilePath: '../../.env',
         validate: validateEnv,
       }),
+      PrismaModule,
+      TenancyModule,
       QueueModule,
       MailModule,
     ],
@@ -83,13 +88,20 @@ describe('Mail queue: real delivery to Mailpit (e2e)', () => {
       await fetch(`${mailpit()}/api/v1/message/${message.ID}`)
     ).json()) as { Subject: string; Text: string };
 
-    const webUrl = app.get(ConfigService<Env, true>).get('WEB_URL', { infer: true });
+    const webUrl = app
+      .get(ConfigService<Env, true>)
+      .get('WEB_URL', { infer: true });
     expect(detail.Subject).toBe('Verify your email address');
     expect(detail.Text).toContain(`${webUrl}/verify-email?token=${token}`);
 
     // Completed jobs are removed so one-time tokens do not linger in Redis.
     const queue = app.get<Queue>(EMAIL_QUEUE);
-    const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'completed');
+    const counts = await queue.getJobCounts(
+      'waiting',
+      'active',
+      'delayed',
+      'completed',
+    );
     expect(counts).toMatchObject({ waiting: 0, delayed: 0, completed: 0 });
   });
 
@@ -136,7 +148,10 @@ describe('Mail queue: retries and failure handling (e2e)', () => {
   });
 
   const job: MailJob = { kind: 'account-exists', to: 'retry@example.test' };
-  const fastRetry = { attempts: 3, backoff: { type: 'fixed' as const, delay: 50 } };
+  const fastRetry = {
+    attempts: 3,
+    backoff: { type: 'fixed' as const, delay: 50 },
+  };
 
   it('retries a failing send and succeeds once the transport recovers', async () => {
     transport.failFirst = 2;

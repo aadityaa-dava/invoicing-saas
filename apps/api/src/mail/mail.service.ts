@@ -10,8 +10,8 @@ import { MAIL_JOB_NAME, type MailJob } from './mail.types';
 export class MailService {
   constructor(@Inject(EMAIL_QUEUE) private readonly queue: Queue<MailJob>) {}
 
-  private async enqueue(job: MailJob): Promise<void> {
-    await this.queue.add(MAIL_JOB_NAME, job);
+  private async enqueue(job: MailJob, jobId?: string): Promise<void> {
+    await this.queue.add(MAIL_JOB_NAME, job, jobId ? { jobId } : undefined);
   }
 
   sendVerificationEmail(to: string, token: string): Promise<void> {
@@ -24,5 +24,13 @@ export class MailService {
 
   sendAccountExistsEmail(to: string): Promise<void> {
     return this.enqueue({ kind: 'account-exists', to });
+  }
+
+  // Ids only. The deterministic job id stops a duplicate while a job is pending.
+  sendInvoiceEmail(orgId: string, invoiceId: string): Promise<void> {
+    return this.enqueue(
+      { kind: 'invoice-sent', orgId, invoiceId },
+      `invoice-sent-${invoiceId}`,
+    );
   }
 }

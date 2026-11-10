@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type { InvoiceStatus, Prisma } from '../generated/prisma/client';
+import { MailService } from '../mail/mail.service';
 import { TenantDb, type TenantTx } from '../tenancy/tenant-db.service';
 import type {
   CreateInvoiceDto,
@@ -24,6 +26,29 @@ const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
 const notFound = () => new NotFoundException({ code: 'invoice_not_found' });
 const notDraft = () => new ConflictException({ code: 'invoice_not_draft' });
+
+// Shared by the PDF endpoint (user context) and the email worker (org-only
+// context): both read through row-level security.
+export async function loadPdfData(tx: TenantTx, orgId: string, id: string) {
+  const invoice = await tx.invoice.findFirst({
+    where: { id, deletedAt: null },
+    include: { lineItems: true },
+  });
+  if (!invoice) throw notFound();
+  const org = await tx.organization.findUnique({
+    where: { id: orgId },
+    select: { name: true },
+  });
+  const client = await tx.client.findFirst({
+    where: { id: invoice.clientId },
+    select: { name: true, email: true, billingAddress: true, taxId: true },
+  });
+  return {
+    organizationName: org?.name ?? '',
+    client,
+    invoice: toApi(invoice),
+  };
+}
 
 // API shape. Amounts are plain integers (cents): the caps in money.ts keep
 // every value below Number.MAX_SAFE_INTEGER, so no precision is lost.
@@ -67,7 +92,12 @@ function toApi(inv: InvoiceWithLines) {
 
 @Injectable()
 export class InvoicesService {
-  constructor(private readonly tenantDb: TenantDb) {}
+  private readonly logger = new Logger(InvoicesService.name);
+
+  constructor(
+    private readonly tenantDb: TenantDb,
+    private readonly mail: MailService,
+  ) {}
 
   create(userId: string, orgId: string, dto: CreateInvoiceDto) {
     const { lines, totals } = this.computeLines(dto.lineItems);
@@ -159,7 +189,10 @@ export class InvoicesService {
   async remove(userId: string, orgId: string, id: string): Promise<void> {
     await this.tenantDb.run({ userId, orgId }, async (tx) => {
       await this.lockDraft(tx, id);
-      await tx.invoice.update({ where: { id }, data: { deletedAt: new Date() } });
+      await tx.invoice.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
     });
   }
 
@@ -167,27 +200,49 @@ export class InvoicesService {
   // Both locks (the invoice row, then the counter row) are held until commit,
   // so concurrent sends are serialized. The counter increment commits or rolls
   // back together with the invoice update: numbers are unique AND gapless.
-  send(userId: string, orgId: string, id: string) {
-    return this.tenantDb.run({ userId, orgId }, async (tx) => {
-      const current = await this.lockInvoice(tx, id);
-      if (current.status !== 'draft') throw notDraft();
+  async send(userId: string, orgId: string, id: string) {
+    const { result, notify } = await this.tenantDb.run(
+      { userId, orgId },
+      async (tx) => {
+        const current = await this.lockInvoice(tx, id);
+        if (current.status !== 'draft') throw notDraft();
 
-      // Creates the counter on the first send, increments it afterwards.
-      // The first call stores 2 and returns 1.
-      const counter = await tx.$queryRaw<{ assigned: number }[]>`
+        // Creates the counter on the first send, increments it afterwards.
+        // The first call stores 2 and returns 1.
+        const counter = await tx.$queryRaw<{ assigned: number }[]>`
         INSERT INTO invoice_counters (org_id, next_number)
         VALUES (${orgId}::uuid, 2)
         ON CONFLICT (org_id)
         DO UPDATE SET next_number = invoice_counters.next_number + 1
         RETURNING next_number - 1 AS assigned`;
-      const number = `INV-${String(counter[0].assigned).padStart(6, '0')}`;
+        const number = `INV-${String(counter[0].assigned).padStart(6, '0')}`;
 
-      await tx.invoice.update({
-        where: { id },
-        data: { status: 'SENT', number, sentAt: new Date() },
-      });
-      return toApi(await this.load(tx, id));
-    });
+        await tx.invoice.update({
+          where: { id },
+          data: { status: 'SENT', number, sentAt: new Date() },
+        });
+        const sent = await this.load(tx, id);
+        const client = await tx.client.findFirst({
+          where: { id: sent.clientId },
+          select: { email: true },
+        });
+        return { result: toApi(sent), notify: Boolean(client?.email) };
+      },
+    );
+
+    // After commit, so a worker can never see an uncommitted or rolled-back
+    // send. Delivery is best-effort: the invoice is already sent, so a queue
+    // outage is logged instead of failing the request.
+    if (notify) {
+      try {
+        await this.mail.sendInvoiceEmail(orgId, id);
+      } catch (err) {
+        this.logger.error(
+          `could not enqueue invoice email for ${id}: ${(err as Error).message}`,
+        );
+      }
+    }
+    return result;
   }
 
   // draft | sent | overdue -> void. A paid or already voided invoice cannot be.
@@ -208,26 +263,9 @@ export class InvoicesService {
   // Everything the PDF needs, read in one transaction. The client is looked up
   // even if it was soft-deleted since: an issued invoice must stay printable.
   getPdfData(userId: string, orgId: string, id: string) {
-    return this.tenantDb.run({ userId, orgId }, async (tx) => {
-      const invoice = await tx.invoice.findFirst({
-        where: { id, deletedAt: null },
-        include: { lineItems: true },
-      });
-      if (!invoice) throw notFound();
-      const org = await tx.organization.findUnique({
-        where: { id: orgId },
-        select: { name: true },
-      });
-      const client = await tx.client.findFirst({
-        where: { id: invoice.clientId },
-        select: { name: true, email: true, billingAddress: true, taxId: true },
-      });
-      return {
-        organizationName: org?.name ?? '',
-        client,
-        invoice: toApi(invoice),
-      };
-    });
+    return this.tenantDb.run({ userId, orgId }, (tx) =>
+      loadPdfData(tx, orgId, id),
+    );
   }
 
   // --- helpers ------------------------------------------------------------
