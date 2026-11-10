@@ -190,3 +190,24 @@ idempotency.
 `draft -> sent -> paid`, `sent -> overdue` (set by a daily job), and
 `draft|sent|overdue -> void`. Once an invoice leaves `draft`, its lines, amounts
 and number are immutable. Corrections are done by voiding and reissuing.
+
+## Integrity enforced by the database
+
+The application validates first, but the database refuses impossible data
+even if the application has a bug.
+
+- Foreign keys carry the organization id. An invoice references its client by
+  `(client_id, org_id)` and a line item references its invoice by
+  `(invoice_id, org_id)`. Row-level security checks the row being written but
+  not the row it points at, so without this a record could reference another
+  tenant's data.
+- Check constraints: `total = subtotal + tax`, no negative amounts, due date
+  not before issue date, currency is three capital letters, number matches
+  `INV-` followed by at least six digits, a number is required unless the
+  invoice is a draft or void, quantity is positive, tax rate is 0 to 10000
+  basis points, line position starts at 1.
+- Deleting an organization cascades to everything it owns. The invoice to
+  client key uses `NO ACTION` (not `RESTRICT`) so that cascade is not blocked
+  by the order in which rows are removed, while deleting a client that still
+  has invoices is still refused.
+- The application role cannot hard-delete invoices or invoice counters.

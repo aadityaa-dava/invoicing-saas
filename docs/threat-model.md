@@ -64,3 +64,11 @@ Stripe to our webhook endpoint, API to the email provider, CI/CD to hosting.
   whether an address is registered. Accepted for v1 because the caller is an
   authenticated administrator and there is no invitation flow yet. An emailed
   invitation would remove it.
+
+- Invoice immutability after sending is enforced by the application (a row
+  lock and a status check on every edit). A bug there could let the lines of an
+  issued invoice change. A database trigger that rejects such changes is planned
+  for the security hardening phase.
+- Gapless numbering serializes sends within one organization on the counter
+  row. A very high send rate in a single organization would queue. Accepted at
+  this scale (ADR-0005).

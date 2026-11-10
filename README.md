@@ -17,7 +17,7 @@ documented before the next begins. Everything runs locally and on free tiers.
 | 3 | Authentication | Done |
 | 4 | Multi-tenancy with row-level security | Done |
 | 5 | Role-based access control and member management | Done |
-| 6 | Invoices: line items, money arithmetic, numbering, PDF | In progress |
+| 6 | Invoices: line items, money arithmetic, numbering, PDF | Done |
 | 7 | Background jobs (email, recurring invoices, overdue sweep) | Planned |
 | 8 | Stripe in test mode (subscriptions, invoice payment, webhooks) | Planned |
 | 9 | Audit log, pagination, OpenAPI | Planned |
@@ -37,6 +37,7 @@ documented before the next begins. Everything runs locally and on free tiers.
 | Database | PostgreSQL 17, Prisma 7 with the `pg` driver adapter |
 | Cache and rate limits | Redis 7 (`ioredis`) |
 | Validation | zod, at every boundary including environment variables |
+| PDF | pdfkit (pure JavaScript, no browser) |
 | Tests | Jest 30, Supertest |
 | Tooling | pnpm workspace, Docker Compose, conventional commits |
 | Planned | BullMQ, Stripe (test mode), Next.js, Terraform, GitHub Actions, Playwright, Sentry |
@@ -88,12 +89,28 @@ documented before the next begins. Everything runs locally and on free tiers.
   touch owners, only owners can grant ownership, and the last owner can never be
   demoted or removed. Owner changes run under a `SELECT ... FOR UPDATE` lock so
   concurrent changes cannot leave an organization without an owner.
+### Invoices (ADR-0005)
+
+- Drafts are created with line items and the server computes every amount in
+  integer cents with per-line half-up rounding, so printed numbers always add
+  up. Clients cannot submit totals.
+- Numbers (`INV-000001`) are assigned when an invoice is sent, from a counter
+  row locked inside the same transaction, so they are unique and gapless even
+  under concurrent sends and rollbacks.
+- Lifecycle: draft, sent, paid, overdue, void. Only drafts can be edited or
+  deleted, and edit, send and void share one row lock so they cannot interleave.
+- The database enforces the shape of the data too: check constraints on
+  amounts, dates and numbers, and foreign keys that carry the organization id so
+  nothing can reference another tenant's records.
+- PDFs are rendered in memory, private and uncacheable. Drafts and voided
+  invoices are watermarked.
+
 ### Conventions
  
 - Errors use RFC 9457 `application/problem+json` with a stable `code` field.
 - Liveness (`/health/live`) and readiness (`/health/ready`, which checks
   Postgres and Redis) are separate endpoints outside the `/v1` prefix.
-- Soft delete for clients. Money is stored as integer cents (see
+- Soft delete for clients and invoices. Money is stored as integer cents (see
   `docs/data-model.md`).
 ## API (implemented so far)
  
@@ -116,6 +133,12 @@ within the organization.
 | GET | `/orgs/:orgId/clients`, `/orgs/:orgId/clients/:id` | `client:read` |
 | PATCH | `/orgs/:orgId/clients/:id` | `client:write` |
 | DELETE | `/orgs/:orgId/clients/:id` | `client:delete` (soft delete) |
+| POST | `/orgs/:orgId/invoices` | `invoice:write` |
+| GET | `/orgs/:orgId/invoices`, `/orgs/:orgId/invoices/:id` | `invoice:read` |
+| PATCH, DELETE | `/orgs/:orgId/invoices/:id` | `invoice:write` (drafts only) |
+| POST | `/orgs/:orgId/invoices/:id/send` | `invoice:send` |
+| POST | `/orgs/:orgId/invoices/:id/void` | `invoice:void` |
+| GET | `/orgs/:orgId/invoices/:id/pdf` | `invoice:read` |
 | GET | `/health/live`, `/health/ready` (no `/v1` prefix) | public |
  
 The full planned surface is in [`docs/api-design.md`](docs/api-design.md).
@@ -176,7 +199,7 @@ pnpm --filter api exec tsc --noEmit
 The end-to-end suite runs the real application against real Postgres and Redis
 through the restricted database role, with no mocks for the data layer.
  
-- Over 100 end-to-end tests cover authentication, tenancy, authorization,
+- Over 160 end-to-end tests cover authentication, tenancy, authorization,
   member management and the resource endpoints.
 - 16 database-level tests attack row-level security directly: cross-tenant
   reads, updates, deletes and inserts, moving a row between tenants, leakage
@@ -199,7 +222,7 @@ apps/
       common/          problem-details filter, validation pipe
       config/          environment validation
       health/          liveness and readiness
-      invoices/        money arithmetic (invoice endpoints in progress)
+      invoices/        invoices, money arithmetic, numbering, PDF
       mail/            mail service (logs in development)
       organizations/   organizations and members
       prisma/          database service
@@ -227,6 +250,7 @@ docker-compose.yml
 | [ADR-0002](docs/adr/0002-auth-strategy.md) | Authentication design |
 | [ADR-0003](docs/adr/0003-orm-and-migrations.md) | Prisma, migrations, database roles |
 | [ADR-0004](docs/adr/0004-authorization-rbac.md) | Permission model and member rules |
+| [ADR-0005](docs/adr/0005-invoicing-money-and-numbering.md) | Money, invoice numbering and lifecycle |
 | [Data model](docs/data-model.md) | Tables, money rules, invoice numbering, lifecycle |
 | [API design](docs/api-design.md) | Endpoints and the permission matrix |
 | [Threat model](docs/threat-model.md) | Assets, threats, mitigations, residual risks |
@@ -253,5 +277,7 @@ docker-compose.yml
 - Behind a proxy, Express `trust proxy` must be configured at deployment so
   rate limiting sees client addresses.
 - In development, emails are written to the log instead of being sent.
-- The client list is capped at 100 rows until pagination arrives in Phase 9.
+- The client and invoice lists are capped at 100 rows until pagination arrives in Phase 9.
+- Invoice immutability after sending is enforced by the application. A database trigger as a second layer is planned for the hardening phase.
+- Only two-decimal currencies are supported (USD, EUR, GBP, CAD, AUD).
  
