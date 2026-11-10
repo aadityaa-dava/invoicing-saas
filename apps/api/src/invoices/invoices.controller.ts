@@ -83,4 +83,26 @@ export class InvoicesController {
   ): Promise<void> {
     await this.invoices.remove(user.id, m.orgId, id);
   }
+
+  @Post(':id/send')
+  @HttpCode(200)
+  @RequirePermission('invoice:send')
+  send(
+    @CurrentUser() user: AuthUser,
+    @CurrentMembership() m: OrgMembership,
+    @Param('id', idPipe) id: string,
+  ) {
+    return this.invoices.send(user.id, m.orgId, id);
+  }
+
+  @Post(':id/void')
+  @HttpCode(200)
+  @RequirePermission('invoice:void')
+  voidInvoice(
+    @CurrentUser() user: AuthUser,
+    @CurrentMembership() m: OrgMembership,
+    @Param('id', idPipe) id: string,
+  ) {
+    return this.invoices.voidInvoice(user.id, m.orgId, id);
+  }
 }

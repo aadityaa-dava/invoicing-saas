@@ -163,6 +163,48 @@ export class InvoicesService {
     });
   }
 
+  // Draft -> sent. Assigns the next number from the organization's counter.
+  // Both locks (the invoice row, then the counter row) are held until commit,
+  // so concurrent sends are serialized. The counter increment commits or rolls
+  // back together with the invoice update: numbers are unique AND gapless.
+  send(userId: string, orgId: string, id: string) {
+    return this.tenantDb.run({ userId, orgId }, async (tx) => {
+      const current = await this.lockInvoice(tx, id);
+      if (current.status !== 'draft') throw notDraft();
+
+      // Creates the counter on the first send, increments it afterwards.
+      // The first call stores 2 and returns 1.
+      const counter = await tx.$queryRaw<{ assigned: number }[]>`
+        INSERT INTO invoice_counters (org_id, next_number)
+        VALUES (${orgId}::uuid, 2)
+        ON CONFLICT (org_id)
+        DO UPDATE SET next_number = invoice_counters.next_number + 1
+        RETURNING next_number - 1 AS assigned`;
+      const number = `INV-${String(counter[0].assigned).padStart(6, '0')}`;
+
+      await tx.invoice.update({
+        where: { id },
+        data: { status: 'SENT', number, sentAt: new Date() },
+      });
+      return toApi(await this.load(tx, id));
+    });
+  }
+
+  // draft | sent | overdue -> void. A paid or already voided invoice cannot be.
+  voidInvoice(userId: string, orgId: string, id: string) {
+    return this.tenantDb.run({ userId, orgId }, async (tx) => {
+      const current = await this.lockInvoice(tx, id);
+      if (!['draft', 'sent', 'overdue'].includes(current.status)) {
+        throw new ConflictException({ code: 'invoice_not_voidable' });
+      }
+      await tx.invoice.update({
+        where: { id },
+        data: { status: 'VOID', voidedAt: new Date() },
+      });
+      return toApi(await this.load(tx, id));
+    });
+  }
+
   // --- helpers ------------------------------------------------------------
 
   private computeLines(items: readonly LineInput[]) {
@@ -218,9 +260,9 @@ export class InvoicesService {
     });
   }
 
-  // Locks the invoice row until the transaction ends, so an edit and a send
-  // cannot interleave, then requires it to be a live draft.
-  private async lockDraft(tx: TenantTx, id: string) {
+  // Locks the invoice row until the transaction ends, so an edit, a send and a
+  // void can never interleave. Returns its current state.
+  private async lockInvoice(tx: TenantTx, id: string) {
     const rows = await tx.$queryRaw<
       { status: string; issue_date: string; due_date: string }[]
     >`SELECT status::text AS status, issue_date::text AS issue_date,
@@ -230,7 +272,16 @@ export class InvoicesService {
       FOR UPDATE`;
     const row = rows[0];
     if (!row) throw notFound();
+    return {
+      status: row.status,
+      issueDate: row.issue_date,
+      dueDate: row.due_date,
+    };
+  }
+
+  private async lockDraft(tx: TenantTx, id: string) {
+    const row = await this.lockInvoice(tx, id);
     if (row.status !== 'draft') throw notDraft();
-    return { issueDate: row.issue_date, dueDate: row.due_date };
+    return row;
   }
 }
