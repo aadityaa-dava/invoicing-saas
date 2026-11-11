@@ -2,9 +2,9 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/app.setup';
 import { MailService } from '../../src/mail/mail.service';
+import { EMAIL_QUEUE } from '../../src/queue/queue.constants';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { RateLimitService } from '../../src/rate-limit/rate-limit.service';
 
@@ -13,6 +13,8 @@ export class FakeMailService {
   resets: { to: string; token: string }[] = [];
   existing: string[] = [];
   invoiceEmails: { orgId: string; invoiceId: string }[] = [];
+  // When set, invoice emails also go to the real queue (worker-backed suites).
+  forward?: MailService;
   async sendVerificationEmail(to: string, token: string) {
     this.verifications.push({ to, token });
   }
@@ -21,16 +23,20 @@ export class FakeMailService {
   }
   async sendInvoiceEmail(orgId: string, invoiceId: string) {
     this.invoiceEmails.push({ orgId, invoiceId });
+    await this.forward?.sendInvoiceEmail(orgId, invoiceId);
   }
   async sendAccountExistsEmail(to: string) {
     this.existing.push(to);
   }
 }
 
-export async function createTestApp() {
+export async function createTestApp(options: { workers?: boolean } = {}) {
   // Mail jobs are consumed only by the mail-queue suite, never by other suites.
-  process.env.RUN_WORKERS = 'false';
+  process.env.RUN_WORKERS = options.workers ? 'true' : 'false';
   const mail = new FakeMailService();
+  // Loaded here, not at the top of the file: the config module freezes the
+  // environment when AppModule is first evaluated, after RUN_WORKERS is set.
+  const { AppModule } = await import('../../src/app.module.js');
   const moduleFixture = await Test.createTestingModule({
     imports: [AppModule],
   })
@@ -40,6 +46,9 @@ export async function createTestApp() {
   const app: INestApplication = moduleFixture.createNestApplication();
   configureApp(app);
   await app.init();
+  if (options.workers) {
+    mail.forward = new MailService(app.get(EMAIL_QUEUE));
+  }
   const t = { app, mail, prisma: app.get(PrismaService) };
   isolateRateLimits(t);
   return t;
