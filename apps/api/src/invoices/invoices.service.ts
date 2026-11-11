@@ -13,7 +13,7 @@ import type {
   ListInvoicesQuery,
   UpdateInvoiceDto,
 } from './invoices.dto';
-import { computeLine, computeTotals, MoneyError } from './money';
+import { computeInvoiceLines } from './invoice-lines';
 
 type LineInput = CreateInvoiceDto['lineItems'][number];
 type InvoiceWithLines = Prisma.InvoiceGetPayload<{
@@ -271,31 +271,7 @@ export class InvoicesService {
   // --- helpers ------------------------------------------------------------
 
   private computeLines(items: readonly LineInput[]) {
-    try {
-      const lines = items.map((item, index) => {
-        const unitPriceCents = BigInt(item.unitPriceCents);
-        const taxRateBps = item.taxRateBps ?? 0;
-        const amounts = computeLine({
-          quantity: item.quantity,
-          unitPriceCents,
-          taxRateBps,
-        });
-        return {
-          position: index + 1,
-          description: item.description,
-          quantity: item.quantity,
-          unitPriceCents,
-          taxRateBps,
-          ...amounts,
-        };
-      });
-      return { lines, totals: computeTotals(lines) };
-    } catch (e) {
-      if (e instanceof MoneyError) {
-        throw new BadRequestException({ code: e.code });
-      }
-      throw e;
-    }
+    return computeInvoiceLines(items);
   }
 
   private lineRows(

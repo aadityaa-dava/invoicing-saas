@@ -4,7 +4,7 @@ import { MAX_LINE_AMOUNT_CENTS, MAX_LINES, parseQuantity } from './money';
 // Two-decimal currencies only: the money rules assume 2 decimal places.
 export const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD'] as const;
 
-const isoDate = z
+export const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine(
@@ -41,7 +41,7 @@ const lineItem = z
   })
   .strict();
 
-const lineItems = z.array(lineItem).min(1).max(MAX_LINES);
+export const lineItems = z.array(lineItem).min(1).max(MAX_LINES);
 
 export const createInvoiceSchema = z
   .object({

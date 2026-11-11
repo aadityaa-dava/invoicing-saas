@@ -12,6 +12,7 @@ import { RateLimitModule } from './rate-limit/rate-limit.module';
 import { RedisModule } from './redis/redis.module';
 import { QueueModule } from './queue/queue.module';
 import { JobsModule } from './jobs/jobs.module';
+import { RecurringModule } from './recurring/recurring.module';
 
 // RateLimitModule is imported before AuthModule so its guard runs first:
 // unauthenticated brute force is throttled before any token is examined.
@@ -26,6 +27,7 @@ import { JobsModule } from './jobs/jobs.module';
     RedisModule,
     QueueModule,
     JobsModule,
+    RecurringModule,
     RateLimitModule,
     AuthModule,
     TenancyModule,

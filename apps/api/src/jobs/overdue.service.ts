@@ -2,8 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantDb } from '../tenancy/tenant-db.service';
 
-export const todayUtc = () => new Date().toISOString().slice(0, 10);
-
 @Injectable()
 export class OverdueService {
   constructor(
