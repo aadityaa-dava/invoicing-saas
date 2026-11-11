@@ -33,6 +33,7 @@ export class FakeMailService {
 export async function createTestApp(options: { workers?: boolean } = {}) {
   // Mail jobs are consumed only by the mail-queue suite, never by other suites.
   process.env.RUN_WORKERS = options.workers ? 'true' : 'false';
+  if (options.workers) process.env.QUEUE_PREFIX = `test-${randomUUID()}`;
   const mail = new FakeMailService();
   // Loaded here, not at the top of the file: the config module freezes the
   // environment when AppModule is first evaluated, after RUN_WORKERS is set.

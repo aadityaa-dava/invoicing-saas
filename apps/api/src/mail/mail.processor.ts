@@ -46,6 +46,7 @@ export class MailProcessor implements OnModuleInit, OnApplicationShutdown {
         connection: bullConnection(
           this.config.get('REDIS_URL', { infer: true }),
         ),
+        prefix: this.config.get('QUEUE_PREFIX', { infer: true }),
         concurrency: 5,
       },
     );

@@ -36,6 +36,7 @@ async function buildApp(transport?: {
   sendMail: () => Promise<unknown>;
 }): Promise<INestApplication> {
   process.env.RUN_WORKERS = 'true';
+  process.env.QUEUE_PREFIX = `test-${randomUUID()}`;
   let builder = Test.createTestingModule({
     imports: [
       ConfigModule.forRoot({
@@ -64,6 +65,7 @@ describe('Mail queue: real delivery to Mailpit (e2e)', () => {
     app = await buildApp();
   });
   afterAll(async () => {
+    await app.get<Queue>(EMAIL_QUEUE).obliterate({ force: true });
     await app.close();
   });
 
@@ -140,6 +142,7 @@ describe('Mail queue: retries and failure handling (e2e)', () => {
     queue = app.get<Queue<MailJob>>(EMAIL_QUEUE);
   });
   afterAll(async () => {
+    await app.get<Queue>(EMAIL_QUEUE).obliterate({ force: true });
     await app.close();
   });
   beforeEach(() => {

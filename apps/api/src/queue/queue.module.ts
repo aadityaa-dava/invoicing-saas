@@ -19,6 +19,7 @@ import { EMAIL_QUEUE, EMAIL_QUEUE_NAME } from './queue.constants';
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => {
         const queue = new Queue(EMAIL_QUEUE_NAME, {
+          prefix: config.get('QUEUE_PREFIX', { infer: true }),
           connection: bullConnection(config.get('REDIS_URL', { infer: true })),
           defaultJobOptions: {
             attempts: 5,

@@ -25,6 +25,8 @@ const envSchema = z.object({
   MAIL_FROM: z.string().min(3).default('Invoicing <no-reply@invoicing.local>'),
   // Set to false to run the API without consuming background jobs.
   RUN_WORKERS: boolFlag('true'),
+  // Redis key namespace for queues. Tests give each suite its own.
+  QUEUE_PREFIX: z.string().min(1).default('bull'),
 });
 
 export type Env = z.infer<typeof envSchema>;

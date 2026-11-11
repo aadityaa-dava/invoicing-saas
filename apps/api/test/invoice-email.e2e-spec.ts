@@ -105,6 +105,7 @@ describe('Invoice email delivery (e2e)', () => {
       userEmails,
     ]);
     await admin.end();
+    await queue.obliterate({ force: true });
     await t.app.close();
   });
 
