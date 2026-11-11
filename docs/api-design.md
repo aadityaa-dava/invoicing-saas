@@ -62,8 +62,8 @@ REST over JSON, versioned under `/v1`. OpenAPI docs are generated from the code
 | POST | /v1/orgs/:orgId/invoices/:id/void | |
 | GET | /v1/orgs/:orgId/invoices/:id/pdf | Streams the PDF |
 | POST | /v1/orgs/:orgId/invoices/:id/payment-link | Creates a Stripe payment link |
-| GET, POST | /v1/orgs/:orgId/recurring | |
-| GET, PATCH, DELETE | /v1/orgs/:orgId/recurring/:id | |
+| GET, POST | /v1/orgs/:orgId/recurring-invoices | See "Recurring invoices (implemented)" below |
+| GET, PATCH, DELETE | /v1/orgs/:orgId/recurring-invoices/:id | DELETE is a soft delete |
 
 ### Recurring invoices (implemented, ADR-0006)
 
@@ -114,3 +114,10 @@ never check role names directly.
 - Members are added by email only if the user already has a verified account.
   There is no emailed invitation flow for people without an account yet.
 - Single currency per invoice, 2-decimal currencies only.
+- Email delivery is at least once, so a duplicate is possible after a crash.
+  A crash between the send commit and the enqueue loses that one email until
+  a transactional outbox is added.
+- Recurring schedules use UTC days. There is no per-organization time zone.
+- A recurring template cannot change its frequency, start date or client.
+  Create a new template instead.
+- Catch-up is capped at 12 runs per template per day.

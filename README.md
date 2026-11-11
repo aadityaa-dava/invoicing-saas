@@ -18,7 +18,7 @@ documented before the next begins. Everything runs locally and on free tiers.
 | 4 | Multi-tenancy with row-level security | Done |
 | 5 | Role-based access control and member management | Done |
 | 6 | Invoices: line items, money arithmetic, numbering, PDF | Done |
-| 7 | Background jobs (email, recurring invoices, overdue sweep) | Planned |
+| 7 | Background jobs (email, recurring invoices, overdue sweep) | Done |
 | 8 | Stripe in test mode (subscriptions, invoice payment, webhooks) | Planned |
 | 9 | Audit log, pagination, OpenAPI | Planned |
 | 10 | Web frontend (Next.js) | Planned |
@@ -158,6 +158,9 @@ within the organization.
 | POST | `/orgs/:orgId/invoices/:id/send` | `invoice:send` |
 | POST | `/orgs/:orgId/invoices/:id/void` | `invoice:void` |
 | GET | `/orgs/:orgId/invoices/:id/pdf` | `invoice:read` |
+| POST | `/orgs/:orgId/recurring-invoices` | `recurring:manage` |
+| GET | `/orgs/:orgId/recurring-invoices`, `/orgs/:orgId/recurring-invoices/:id` | `invoice:read` |
+| PATCH, DELETE | `/orgs/:orgId/recurring-invoices/:id` | `recurring:manage` (DELETE is a soft delete) |
 | GET | `/health/live`, `/health/ready` (no `/v1` prefix) | public |
  
 The full planned surface is in [`docs/api-design.md`](docs/api-design.md).
@@ -173,7 +176,7 @@ corepack enable
 pnpm install
  
 cp .env.example .env         # then set the secrets, see below
-pnpm infra:up                # Postgres and Redis in Docker
+pnpm infra:up                # Postgres, Redis and Mailpit in Docker
  
 pnpm --filter api exec prisma generate
 pnpm --filter api exec prisma migrate deploy
@@ -182,8 +185,10 @@ pnpm --filter api start:dev  # API on http://localhost:4000
 ```
  
 Generate the token signing secret with `openssl rand -base64 48` and put it in
-`JWT_ACCESS_SECRET`. Local ports default to 5433 (Postgres), 6380 (Redis) and
-4000 (API) so they do not clash with services already on your machine.
+`JWT_ACCESS_SECRET`. Local ports default to 5433 (Postgres), 6380 (Redis), 1025 (Mailpit SMTP),
+8025 (Mailpit web UI) and 4000 (API) so they do not clash with services
+already on your machine. Every email the API sends in development appears in
+Mailpit at http://localhost:8025 and never leaves your machine.
  
 Other infrastructure commands: `pnpm infra:down`, `pnpm infra:reset` (destroys
 local data), `pnpm infra:logs`.
@@ -203,6 +208,10 @@ values.
 | `REFRESH_TOKEN_TTL_DAYS` | Default 7 |
 | `WEB_URL` | Allowed web origin, default `http://localhost:3001` |
 | `PORT` | Default 4000 |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD` | Outgoing mail server. Locally this is Mailpit |
+| `MAIL_FROM` | Sender address for outgoing mail |
+| `RUN_WORKERS` | Whether this process consumes jobs and registers schedules, default `true` |
+| `QUEUE_PREFIX` | Redis key prefix for queues, default `bull`. Tests use a unique one per suite |
  
 The Docker Compose variables (`POSTGRES_*`, `APP_OWNER_PASSWORD`,
 `APP_USER_PASSWORD`, port settings) are listed in `.env.example`.
@@ -218,8 +227,13 @@ pnpm --filter api exec tsc --noEmit
 The end-to-end suite runs the real application against real Postgres and Redis
 through the restricted database role, with no mocks for the data layer.
  
-- Over 160 end-to-end tests cover authentication, tenancy, authorization,
-  member management and the resource endpoints.
+- Over 200 end-to-end tests cover authentication, tenancy, authorization,
+  member management, the resource endpoints and background jobs.
+- Background jobs run for real: workers deliver email through Mailpit with a
+  PDF attachment, and recurring generation is tested for idempotence under
+  concurrent runs, repeated runs, month-end dates and catch-up.
+- About 145 unit tests cover money arithmetic, permissions and the recurring
+  schedule calculation.
 - 16 database-level tests attack row-level security directly: cross-tenant
   reads, updates, deletes and inserts, moving a row between tenants, leakage
   across pooled connections, and the owner role being subject to the policies.
@@ -229,6 +243,7 @@ through the restricted database role, with no mocks for the data layer.
   separate transaction to prove that owner changes wait for it.
 - Security tests are checked for the ability to fail. Disabling a policy or
   removing the lock makes the matching tests go red.
+
 ## Repository layout
  
 ```
@@ -242,11 +257,14 @@ apps/
       config/          environment validation
       health/          liveness and readiness
       invoices/        invoices, money arithmetic, numbering, PDF
-      mail/            mail service (logs in development)
+      jobs/            daily sweeps, overdue and recurring generation workers
+      mail/            mail queue, templates, worker, invoice email
       organizations/   organizations and members
       prisma/          database service
+      queue/           BullMQ connection and queues
       rate-limit/      Redis rate limiter and guard
       rbac/            permission map, decorator, guard
+      recurring/       recurring templates and schedule calculation
       redis/           Redis provider
       tenancy/         TenantDb, membership guard
     test/              end-to-end tests and helpers
@@ -270,6 +288,7 @@ docker-compose.yml
 | [ADR-0003](docs/adr/0003-orm-and-migrations.md) | Prisma, migrations, database roles |
 | [ADR-0004](docs/adr/0004-authorization-rbac.md) | Permission model and member rules |
 | [ADR-0005](docs/adr/0005-invoicing-money-and-numbering.md) | Money, invoice numbering and lifecycle |
+| [ADR-0006](docs/adr/0006-background-jobs-and-scheduling.md) | Background jobs, cross-tenant scheduling, idempotent generation |
 | [Data model](docs/data-model.md) | Tables, money rules, invoice numbering, lifecycle |
 | [API design](docs/api-design.md) | Endpoints and the permission matrix |
 | [Threat model](docs/threat-model.md) | Assets, threats, mitigations, residual risks |
