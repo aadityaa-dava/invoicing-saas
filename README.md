@@ -305,6 +305,16 @@ docker-compose.yml
   rounding each line first means the printed numbers always add up exactly.
 - **Why assign invoice numbers at send time?** Abandoned drafts leave no gaps
   in the sequence.
+- **Why a queue for email and billing jobs?** Sending inline ties request
+  latency to the mail server and loses the message on failure. A queue gives
+  retries with backoff, and a failed job stays visible for a week.
+- **How do scheduled jobs find work across tenants without bypassing RLS?**
+  Two narrow `SECURITY DEFINER` functions return organization ids only. All
+  real work then runs per organization under that organization's policies.
+- **Why can a recurring template never create a duplicate invoice?** The row
+  lock, an existence check and a unique constraint on `(template, run date)`
+  each stop it independently, and a concurrency test proves it.
+
 ## Known limitations
  
 - Access tokens stay valid for up to 15 minutes after logout or a password
@@ -314,7 +324,14 @@ docker-compose.yml
   whether an address is registered.
 - Behind a proxy, Express `trust proxy` must be configured at deployment so
   rate limiting sees client addresses.
-- In development, emails are written to the log instead of being sent.
+- In development, emails are delivered to Mailpit and never leave your machine.
+- Email delivery is at least once, so a duplicate is possible after a crash. A
+  crash between the send commit and the enqueue loses that one email until a
+  transactional outbox is added.
+- Workers poll Redis continuously. Free hosted Redis tiers cap commands, which
+  is handled in the deployment phase.
+- Recurring schedules use UTC days, and a template cannot change its
+  frequency, start date or client.
 - The client and invoice lists are capped at 100 rows until pagination arrives in Phase 9.
 - Invoice immutability after sending is enforced by the application. A database trigger as a second layer is planned for the hardening phase.
 - Only two-decimal currencies are supported (USD, EUR, GBP, CAD, AUD).
