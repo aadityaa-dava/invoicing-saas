@@ -7,5 +7,6 @@ import { InvoicesService } from './invoices.service';
   imports: [MailModule],
   controllers: [InvoicesController],
   providers: [InvoicesService],
+  exports: [InvoicesService],
 })
 export class InvoicesModule {}

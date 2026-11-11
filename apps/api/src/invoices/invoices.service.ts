@@ -200,7 +200,7 @@ export class InvoicesService {
   // Both locks (the invoice row, then the counter row) are held until commit,
   // so concurrent sends are serialized. The counter increment commits or rolls
   // back together with the invoice update: numbers are unique AND gapless.
-  async send(userId: string, orgId: string, id: string) {
+  async send(userId: string | undefined, orgId: string, id: string) {
     const { result, notify } = await this.tenantDb.run(
       { userId, orgId },
       async (tx) => {
