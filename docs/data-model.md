@@ -211,3 +211,41 @@ even if the application has a bug.
   by the order in which rows are removed, while deleting a client that still
   has invoices is still refused.
 - The application role cannot hard-delete invoices or invoice counters.
+
+## Recurring invoices and background jobs (ADR-0006)
+
+Tables:
+- `recurring_templates`: one row per template. `anchor_date` is the first run
+  and the source of the day of the month, `run_count` is how many runs have
+  been consumed, `next_run_on` is the next run (null once the template has
+  ended), `end_date` is inclusive, `due_in_days` sets each invoice's due date
+  relative to its run date, `auto_send` sends each generated invoice. Soft
+  deleted through `deleted_at`.
+- `recurring_template_line_items`: the lines to copy, with the same shape as
+  invoice lines but without computed amounts. Amounts are always recomputed
+  from these by the invoice rules, so the server stays the only authority on
+  money.
+- `invoices` gains `recurring_template_id` and `recurring_run_on`.
+
+Integrity enforced by the database:
+- Composite keys `(client_id, org_id)` and `(template_id, org_id)` keep
+  templates and their lines inside one organization.
+- A unique constraint on `(recurring_template_id, recurring_run_on)` makes it
+  physically impossible to generate two invoices for one run.
+- A check requires `recurring_template_id` and `recurring_run_on` to be both
+  set or both null.
+- Checks on currency, name length, `due_in_days` (0 to 365), `run_count >= 0`,
+  `end_date >= anchor_date` and `next_run_on >= anchor_date`. Line items are
+  checked like invoice lines.
+- Row-level security is enabled and forced on both tables. The runtime role
+  has no `DELETE` on templates (soft delete only).
+- A partial index on `next_run_on` covers only live, active templates that
+  still have a next run, which is exactly what discovery reads.
+
+Cross-tenant functions (`SECURITY DEFINER`, `search_path` pinned, `EXECUTE`
+only for the runtime role, organization ids returned and nothing else):
+- `app_orgs_with_overdue_invoices(as_of date)`
+- `app_orgs_with_due_recurring(as_of date)`
+
+Each relies on one read-only policy scoped to `app_owner`, a role that never
+connects at runtime.

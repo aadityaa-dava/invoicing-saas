@@ -47,6 +47,27 @@ Stripe to our webhook endpoint, API to the email provider, CI/CD to hosting.
 | T19 | Abuse of email sending | Verified email required, per-organization send limits | Job tests, Phase 7 |
 | T20 | Mass assignment | DTO validation with whitelist and `forbidNonWhitelisted` | Validation tests, Phase 3 onward |
 
+## Background jobs and mail
+
+| Threat | Mitigation |
+|---|---|
+| Cross-tenant leak through the discovery functions | They return organization ids only, `search_path` is pinned, `EXECUTE` is limited to the runtime role, and the supporting policy is scoped to a role that never connects at runtime. Tests assert there is no `PUBLIC` execute and that the runtime role still sees no rows without a tenant. |
+| A job reading or writing another organization's data | Per-organization jobs run under that organization's row-level security. A job can only ever touch the organization it names. |
+| A forged or tampered job redirecting an invoice email | The invoice email takes its recipient from the database, never from the job, and jobs carry ids only. Redis must stay private to the application. |
+| One-time tokens stored in the queue | Verification and reset jobs are removed on completion and kept for 24 hours only if they fail. Redis is a trust boundary and must not be exposed. |
+| Mass-mailing old invoices through a back-dated template | A start date in the past is rejected, catch-up is capped per tick, and auto-send is an explicit per-template choice. |
+| Duplicate billing from retries, races or two instances | Row lock, an existence check, and a unique constraint on `(template, run date)`. Concurrency is tested. |
+| A runaway job starving others | Jobs are isolated per organization, concurrency is limited, catch-up is capped, and billing jobs use their own queue. |
+| Signup timing revealing whether an address exists | Mail is queued, so the response no longer depends on SMTP latency. |
+
+Residual risks:
+- Email delivery is at least once, so a duplicate is possible after a crash
+  between SMTP acceptance and acknowledgement.
+- A crash between the send commit and the enqueue loses that one email. A
+  transactional outbox is the planned fix.
+- If Redis loses its data, queued email is lost. Sweeps recover on their own
+  because their state lives in Postgres.
+
 ## Residual risks and out of scope
 
 - No MFA at launch.

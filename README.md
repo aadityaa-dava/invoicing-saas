@@ -105,6 +105,25 @@ documented before the next begins. Everything runs locally and on free tiers.
 - PDFs are rendered in memory, private and uncacheable. Drafts and voided
   invoices are watermarked.
 
+### Background jobs (ADR-0006)
+
+- Email is queued (BullMQ on Redis) and delivered by a worker with retries and
+  exponential backoff. In development every message lands in Mailpit at
+  http://localhost:8025, nothing leaves your machine.
+- Sending an invoice emails the client a PDF copy when the client has an
+  address. The job carries ids only, and the worker reads the invoice under
+  row-level security.
+- A daily sweep marks sent invoices overdue once their due date has passed.
+- Recurring templates generate draft invoices on a schedule (weekly, monthly,
+  quarterly or yearly), with month-end clamping, catch-up with a cap, and an
+  optional auto-send. Generation is idempotent: a row lock, an existence check
+  and a unique constraint on `(template, run date)` make a duplicate invoice
+  impossible, and a concurrency test proves it.
+- Cross-tenant discovery uses two narrow `SECURITY DEFINER` functions that
+  return organization ids only. The application never bypasses row-level
+  security, and all real work runs per organization.
+- `RUN_WORKERS=false` runs the API without consuming jobs.
+
 ### Conventions
  
 - Errors use RFC 9457 `application/problem+json` with a stable `code` field.

@@ -65,6 +65,22 @@ REST over JSON, versioned under `/v1`. OpenAPI docs are generated from the code
 | GET, POST | /v1/orgs/:orgId/recurring | |
 | GET, PATCH, DELETE | /v1/orgs/:orgId/recurring/:id | |
 
+### Recurring invoices (implemented, ADR-0006)
+
+All under `/v1/orgs/:orgId/recurring-invoices`. Writes need `recurring:manage`,
+reads need `invoice:read`.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/` | Create. `startDate` must not be in the past. Frequency is one of `weekly`, `monthly`, `quarterly`, `yearly`. Returns 201. |
+| GET | `/` | List live templates, optional `?active=true\|false`, capped at 100. |
+| GET | `/:id` | One template with its line items. |
+| PATCH | `/:id` | Name, `dueInDays`, `autoSend`, `endDate` (or null), `active`, `lineItems`. Frequency, start date and client cannot change. Resuming skips runs missed while paused. |
+| DELETE | `/:id` | Soft delete, returns 204. |
+
+Error codes: `start_date_in_past`, `unknown_client`, `end_before_start`,
+`recurring_not_found`.
+
 ### Billing, audit, platform
 | Method | Path | Notes |
 |---|---|---|
