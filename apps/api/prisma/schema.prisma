@@ -83,9 +83,11 @@ model Organization {
   memberships Membership[]
   clients     Client[]
 
-  invoices         Invoice[]
-  invoiceLineItems InvoiceLineItem[]
-  invoiceCounter   InvoiceCounter?
+  invoices                   Invoice[]
+  invoiceLineItems           InvoiceLineItem[]
+  invoiceCounter             InvoiceCounter?
+  recurringTemplates         RecurringTemplate[]
+  recurringTemplateLineItems RecurringTemplateLineItem[]
 
   @@map("organizations")
 }
@@ -116,8 +118,9 @@ model Client {
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  invoices Invoice[]
+  org                Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invoices           Invoice[]
+  recurringTemplates RecurringTemplate[]
 
   @@unique([id, orgId])
   @@index([orgId, createdAt])
@@ -135,29 +138,33 @@ enum InvoiceStatus {
 }
 
 model Invoice {
-  id            String        @id @default(uuid(7)) @db.Uuid
-  orgId         String        @map("org_id") @db.Uuid
-  clientId      String        @map("client_id") @db.Uuid
-  number        String?
-  status        InvoiceStatus @default(DRAFT)
-  currency      String        @default("USD") @db.Char(3)
-  issueDate     DateTime      @map("issue_date") @db.Date
-  dueDate       DateTime      @map("due_date") @db.Date
-  subtotalCents BigInt        @default(0) @map("subtotal_cents")
-  taxCents      BigInt        @default(0) @map("tax_cents")
-  totalCents    BigInt        @default(0) @map("total_cents")
-  sentAt        DateTime?     @map("sent_at") @db.Timestamptz(6)
-  paidAt        DateTime?     @map("paid_at") @db.Timestamptz(6)
-  voidedAt      DateTime?     @map("voided_at") @db.Timestamptz(6)
-  deletedAt     DateTime?     @map("deleted_at") @db.Timestamptz(6)
-  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                  String        @id @default(uuid(7)) @db.Uuid
+  orgId               String        @map("org_id") @db.Uuid
+  clientId            String        @map("client_id") @db.Uuid
+  number              String?
+  status              InvoiceStatus @default(DRAFT)
+  currency            String        @default("USD") @db.Char(3)
+  issueDate           DateTime      @map("issue_date") @db.Date
+  dueDate             DateTime      @map("due_date") @db.Date
+  subtotalCents       BigInt        @default(0) @map("subtotal_cents")
+  taxCents            BigInt        @default(0) @map("tax_cents")
+  totalCents          BigInt        @default(0) @map("total_cents")
+  sentAt              DateTime?     @map("sent_at") @db.Timestamptz(6)
+  paidAt              DateTime?     @map("paid_at") @db.Timestamptz(6)
+  voidedAt            DateTime?     @map("voided_at") @db.Timestamptz(6)
+  deletedAt           DateTime?     @map("deleted_at") @db.Timestamptz(6)
+  recurringTemplateId String?       @map("recurring_template_id") @db.Uuid
+  recurringRunOn      DateTime?     @map("recurring_run_on") @db.Date
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  org       Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  client    Client            @relation(fields: [clientId, orgId], references: [id, orgId], onDelete: NoAction)
-  lineItems InvoiceLineItem[]
+  org               Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client            Client             @relation(fields: [clientId, orgId], references: [id, orgId], onDelete: NoAction)
+  lineItems         InvoiceLineItem[]
+  recurringTemplate RecurringTemplate? @relation(fields: [recurringTemplateId], references: [id], onDelete: NoAction)
 
   @@unique([orgId, number])
+  @@unique([recurringTemplateId, recurringRunOn])
   @@unique([id, orgId])
   @@index([orgId, status])
   @@index([orgId, createdAt])
@@ -192,4 +199,60 @@ model InvoiceCounter {
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@map("invoice_counters")
+}
+
+enum RecurringFrequency {
+  WEEKLY    @map("weekly")
+  MONTHLY   @map("monthly")
+  QUARTERLY @map("quarterly")
+  YEARLY    @map("yearly")
+
+  @@map("recurring_frequency")
+}
+
+model RecurringTemplate {
+  id         String             @id @default(uuid(7)) @db.Uuid
+  orgId      String             @map("org_id") @db.Uuid
+  clientId   String             @map("client_id") @db.Uuid
+  name       String
+  currency   String             @default("USD") @db.Char(3)
+  frequency  RecurringFrequency
+  anchorDate DateTime           @map("anchor_date") @db.Date
+  runCount   Int                @default(0) @map("run_count")
+  nextRunOn  DateTime?          @map("next_run_on") @db.Date
+  endDate    DateTime?          @map("end_date") @db.Date
+  dueInDays  Int                @default(30) @map("due_in_days")
+  autoSend   Boolean            @default(false) @map("auto_send")
+  active     Boolean            @default(true)
+  deletedAt  DateTime?          @map("deleted_at") @db.Timestamptz(6)
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  org       Organization                @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client    Client                      @relation(fields: [clientId, orgId], references: [id, orgId], onDelete: NoAction)
+  lineItems RecurringTemplateLineItem[]
+  invoices  Invoice[]
+
+  @@unique([id, orgId])
+  @@index([orgId])
+  @@index([nextRunOn], map: "recurring_templates_due_idx")
+  @@map("recurring_templates")
+}
+
+model RecurringTemplateLineItem {
+  id             String  @id @default(uuid(7)) @db.Uuid
+  orgId          String  @map("org_id") @db.Uuid
+  templateId     String  @map("template_id") @db.Uuid
+  position       Int
+  description    String
+  quantity       Decimal @db.Decimal(12, 4)
+  unitPriceCents BigInt  @map("unit_price_cents")
+  taxRateBps     Int     @map("tax_rate_bps")
+
+  org      Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  template RecurringTemplate @relation(fields: [templateId, orgId], references: [id, orgId], onDelete: Cascade)
+
+  @@unique([templateId, position])
+  @@index([orgId])
+  @@map("recurring_template_line_items")
 }
