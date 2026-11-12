@@ -250,6 +250,38 @@ describe('Invoice payment links (e2e)', () => {
     expect(checkoutsFor(invoice.id)).toHaveLength(0);
   });
 
+  it('expires the open checkout session when the invoice is voided', async () => {
+    const invoice = await makeInvoice({});
+    await link(invoice.id).expect(201);
+    await http()
+      .post(`/v1/orgs/${orgA}/invoices/${invoice.id}/void`)
+      .set(authA())
+      .expect(200);
+
+    expect(checkoutsFor(invoice.id)[0].expired).toBe(true);
+    const res = await link(invoice.id).expect(409);
+    expect(res.body.code).toBe('invoice_not_payable');
+  });
+
+  it('still voids the invoice when the session cannot be expired', async () => {
+    const invoice = await makeInvoice({});
+    await link(invoice.id).expect(201);
+    t.stripe.failExpire = true;
+    try {
+      await http()
+        .post(`/v1/orgs/${orgA}/invoices/${invoice.id}/void`)
+        .set(authA())
+        .expect(200);
+    } finally {
+      t.stripe.failExpire = false;
+    }
+    const res = await http()
+      .get(`/v1/orgs/${orgA}/invoices/${invoice.id}`)
+      .set(authA())
+      .expect(200);
+    expect(res.body.status).toBe('void');
+  });
+
   it('requires authentication', async () => {
     await http()
       .post(`/v1/orgs/${orgA}/invoices/${randomUUID()}/payment-link`)

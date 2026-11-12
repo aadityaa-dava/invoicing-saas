@@ -1,11 +1,13 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type { InvoiceStatus, Prisma } from '../generated/prisma/client';
+import { STRIPE_GATEWAY, type StripeGateway } from '../billing/stripe.gateway';
 import { MailService } from '../mail/mail.service';
 import { TenantDb, type TenantTx } from '../tenancy/tenant-db.service';
 import type {
@@ -97,6 +99,7 @@ export class InvoicesService {
   constructor(
     private readonly tenantDb: TenantDb,
     private readonly mail: MailService,
+    @Inject(STRIPE_GATEWAY) private readonly stripe: StripeGateway,
   ) {}
 
   create(userId: string, orgId: string, dto: CreateInvoiceDto) {
@@ -246,18 +249,42 @@ export class InvoicesService {
   }
 
   // draft | sent | overdue -> void. A paid or already voided invoice cannot be.
-  voidInvoice(userId: string, orgId: string, id: string) {
-    return this.tenantDb.run({ userId, orgId }, async (tx) => {
-      const current = await this.lockInvoice(tx, id);
-      if (!['draft', 'sent', 'overdue'].includes(current.status)) {
-        throw new ConflictException({ code: 'invoice_not_voidable' });
+  async voidInvoice(userId: string, orgId: string, id: string) {
+    const { result, sessionId } = await this.tenantDb.run(
+      { userId, orgId },
+      async (tx) => {
+        const current = await this.lockInvoice(tx, id);
+        if (!['draft', 'sent', 'overdue'].includes(current.status)) {
+          throw new ConflictException({ code: 'invoice_not_voidable' });
+        }
+        const open = await tx.invoice.findFirst({
+          where: { id },
+          select: { stripeCheckoutSessionId: true },
+        });
+        await tx.invoice.update({
+          where: { id },
+          data: { status: 'VOID', voidedAt: new Date() },
+        });
+        return {
+          result: toApi(await this.load(tx, id)),
+          sessionId: open?.stripeCheckoutSessionId ?? null,
+        };
+      },
+    );
+
+    // After commit, so a Stripe outage can never block a void. If this fails,
+    // a late payment is still handled safely by the webhook, which records it
+    // for a manual refund.
+    if (sessionId) {
+      try {
+        await this.stripe.expireCheckout(sessionId);
+      } catch (err) {
+        this.logger.warn(
+          `could not expire checkout session ${sessionId} for voided invoice ${id}: ${(err as Error).message}`,
+        );
       }
-      await tx.invoice.update({
-        where: { id },
-        data: { status: 'VOID', voidedAt: new Date() },
-      });
-      return toApi(await this.load(tx, id));
-    });
+    }
+    return result;
   }
 
   // Everything the PDF needs, read in one transaction. The client is looked up
