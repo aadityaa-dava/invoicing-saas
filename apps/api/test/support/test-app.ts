@@ -44,7 +44,9 @@ export async function createTestApp(options: { workers?: boolean } = {}) {
     .overrideProvider(MailService)
     .useValue(mail)
     .compile();
-  const app: INestApplication = moduleFixture.createNestApplication();
+  const app: INestApplication = moduleFixture.createNestApplication({
+    rawBody: true,
+  });
   configureApp(app);
   await app.init();
   if (options.workers) {
