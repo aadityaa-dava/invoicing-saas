@@ -62,8 +62,8 @@ Numbering (B):
   share only the counter row, so they cannot deadlock each other.
 
 Lifecycle and immutability:
-- `draft -> sent -> paid`, `sent -> overdue`, and `draft | sent | overdue ->
-  void`. Only drafts can be edited or deleted (deletion is a soft delete).
+- `draft -> sent`, `sent | overdue -> paid`, `sent -> overdue`, and
+  `draft | sent | overdue -> void`. Only drafts can be edited or deleted (deletion is a soft delete).
   Edit, send and void all take the same row lock, so they cannot interleave:
   an edit that races a send waits, then is refused.
 - The database refuses impossible rows regardless of the application: amount
