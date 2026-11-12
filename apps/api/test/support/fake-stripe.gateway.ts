@@ -111,6 +111,14 @@ export class FakeStripeGateway implements StripeGateway {
     return this.verifier.constructEvent(rawBody, signature);
   }
 
+  // Signs an arbitrary body, byte for byte, as Stripe would.
+  signRaw(body: string): string {
+    return this.sdk.webhooks.generateTestHeaderString({
+      payload: body,
+      secret: TEST_WEBHOOK_SECRET,
+    });
+  }
+
   // Builds a correctly signed webhook request body and header.
   sign(event: {
     id: string;
