@@ -2,12 +2,18 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import type { Env } from '../config/env';
+import { TenancyModule } from '../tenancy/tenancy.module';
+import { InvoicePaymentsController } from './invoice-payments.controller';
+import { InvoicePaymentsService } from './invoice-payments.service';
 import { StripeApiGateway } from './stripe-api.gateway';
 import { STRIPE_GATEWAY, type StripeGateway } from './stripe.gateway';
 import { UnconfiguredStripeGateway } from './unconfigured-stripe.gateway';
 
 @Module({
+  imports: [TenancyModule],
+  controllers: [InvoicePaymentsController],
   providers: [
+    InvoicePaymentsService,
     {
       provide: STRIPE_GATEWAY,
       inject: [ConfigService],

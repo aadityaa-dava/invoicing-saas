@@ -3,10 +3,12 @@ import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { configureApp } from '../../src/app.setup';
+import { STRIPE_GATEWAY } from '../../src/billing/stripe.gateway';
 import { MailService } from '../../src/mail/mail.service';
 import { EMAIL_QUEUE } from '../../src/queue/queue.constants';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { RateLimitService } from '../../src/rate-limit/rate-limit.service';
+import { FakeStripeGateway } from './fake-stripe.gateway';
 
 export class FakeMailService {
   verifications: { to: string; token: string }[] = [];
@@ -35,6 +37,7 @@ export async function createTestApp(options: { workers?: boolean } = {}) {
   process.env.RUN_WORKERS = options.workers ? 'true' : 'false';
   if (options.workers) process.env.QUEUE_PREFIX = `test-${randomUUID()}`;
   const mail = new FakeMailService();
+  const stripe = new FakeStripeGateway();
   // Loaded here, not at the top of the file: the config module freezes the
   // environment when AppModule is first evaluated, after RUN_WORKERS is set.
   const { AppModule } = await import('../../src/app.module.js');
@@ -43,6 +46,8 @@ export async function createTestApp(options: { workers?: boolean } = {}) {
   })
     .overrideProvider(MailService)
     .useValue(mail)
+    .overrideProvider(STRIPE_GATEWAY)
+    .useValue(stripe)
     .compile();
   const app: INestApplication = moduleFixture.createNestApplication({
     rawBody: true,
@@ -52,7 +57,7 @@ export async function createTestApp(options: { workers?: boolean } = {}) {
   if (options.workers) {
     mail.forward = new MailService(app.get(EMAIL_QUEUE));
   }
-  const t = { app, mail, prisma: app.get(PrismaService) };
+  const t = { app, mail, stripe, prisma: app.get(PrismaService) };
   isolateRateLimits(t);
   return t;
 }
@@ -60,6 +65,7 @@ export async function createTestApp(options: { workers?: boolean } = {}) {
 export type TestApp = {
   app: INestApplication;
   mail: FakeMailService;
+  stripe: FakeStripeGateway;
   prisma: PrismaService;
 };
 

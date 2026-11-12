@@ -13,6 +13,7 @@ import { RedisModule } from './redis/redis.module';
 import { QueueModule } from './queue/queue.module';
 import { JobsModule } from './jobs/jobs.module';
 import { RecurringModule } from './recurring/recurring.module';
+import { BillingModule } from './billing/billing.module';
 
 // RateLimitModule is imported before AuthModule so its guard runs first:
 // unauthenticated brute force is throttled before any token is examined.
@@ -34,6 +35,7 @@ import { RecurringModule } from './recurring/recurring.module';
     OrganizationsModule,
     ClientsModule,
     InvoicesModule,
+    BillingModule,
   ],
   controllers: [HealthController],
 })
