@@ -6,6 +6,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { InvoicePaymentsController } from './invoice-payments.controller';
 import { InvoicePaymentsService } from './invoice-payments.service';
+import { OrgBillingController } from './org-billing.controller';
+import { OrgBillingService } from './org-billing.service';
 import { StripeApiGateway } from './stripe-api.gateway';
 import { StripeWebhookController } from './stripe-webhook.controller';
 import { StripeWebhookService } from './stripe-webhook.service';
@@ -14,9 +16,14 @@ import { UnconfiguredStripeGateway } from './unconfigured-stripe.gateway';
 
 @Module({
   imports: [TenancyModule, PrismaModule],
-  controllers: [InvoicePaymentsController, StripeWebhookController],
+  controllers: [
+    InvoicePaymentsController,
+    StripeWebhookController,
+    OrgBillingController,
+  ],
   providers: [
     InvoicePaymentsService,
+    OrgBillingService,
     StripeWebhookService,
     {
       provide: STRIPE_GATEWAY,
