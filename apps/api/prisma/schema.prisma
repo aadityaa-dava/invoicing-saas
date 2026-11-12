@@ -88,6 +88,8 @@ model Organization {
   invoiceCounter             InvoiceCounter?
   recurringTemplates         RecurringTemplate[]
   recurringTemplateLineItems RecurringTemplateLineItem[]
+  payments                   Payment[]
+  subscription               Subscription?
 
   @@map("organizations")
 }
@@ -155,6 +157,7 @@ model Invoice {
   deletedAt           DateTime?     @map("deleted_at") @db.Timestamptz(6)
   recurringTemplateId String?       @map("recurring_template_id") @db.Uuid
   recurringRunOn      DateTime?     @map("recurring_run_on") @db.Date
+  stripeCheckoutSessionId String?   @map("stripe_checkout_session_id")
   createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -162,6 +165,7 @@ model Invoice {
   client            Client             @relation(fields: [clientId, orgId], references: [id, orgId], onDelete: NoAction)
   lineItems         InvoiceLineItem[]
   recurringTemplate RecurringTemplate? @relation(fields: [recurringTemplateId], references: [id], onDelete: NoAction)
+  payments          Payment[]
 
   @@unique([orgId, number])
   @@unique([recurringTemplateId, recurringRunOn])
@@ -255,4 +259,48 @@ model RecurringTemplateLineItem {
   @@unique([templateId, position])
   @@index([orgId])
   @@map("recurring_template_line_items")
+}
+
+model Payment {
+  id                      String   @id @default(uuid(7)) @db.Uuid
+  orgId                   String   @map("org_id") @db.Uuid
+  invoiceId               String   @map("invoice_id") @db.Uuid
+  amountCents             BigInt   @map("amount_cents")
+  currency                String   @db.Char(3)
+  stripePaymentIntentId   String   @unique @map("stripe_payment_intent_id")
+  stripeCheckoutSessionId String   @map("stripe_checkout_session_id")
+  status                  String
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invoice Invoice      @relation(fields: [invoiceId, orgId], references: [id, orgId], onDelete: NoAction)
+
+  @@index([orgId, invoiceId])
+  @@map("payments")
+}
+
+model Subscription {
+  id                   String    @id @default(uuid(7)) @db.Uuid
+  orgId                String    @unique @map("org_id") @db.Uuid
+  plan                 String    @default("free")
+  status               String
+  stripeSubscriptionId String    @unique @map("stripe_subscription_id")
+  currentPeriodEnd     DateTime? @map("current_period_end") @db.Timestamptz(6)
+  cancelAtPeriodEnd    Boolean   @default(false) @map("cancel_at_period_end")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model WebhookEvent {
+  stripeEventId String   @id @map("stripe_event_id")
+  type          String
+  outcome       String
+  orgId         String?  @map("org_id") @db.Uuid
+  processedAt   DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@map("webhook_events")
 }
