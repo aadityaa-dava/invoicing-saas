@@ -11,7 +11,11 @@ import {
 } from '../src/jobs/jobs.constants';
 import { JobsProcessor } from '../src/jobs/jobs.processor';
 import { EMAIL_QUEUE } from '../src/queue/queue.constants';
-import { createAdminPool, deleteOrganizations } from './support/admin-db';
+import {
+  createAdminPool,
+  deleteOrganizations,
+  grantPaidPlan,
+} from './support/admin-db';
 import { createTestApp, registerAndLogin, TestApp } from './support/test-app';
 
 async function waitFor<T>(
@@ -48,6 +52,7 @@ describe('Scheduled jobs (e2e)', () => {
       .send({ name: `Jobs ${randomUUID()}` })
       .expect(201);
     orgIds.push(org.body.id);
+    await grantPaidPlan(admin, org.body.id);
     const client = await http()
       .post(`/v1/orgs/${org.body.id}/clients`)
       .set(auth())

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { PlanService } from '../billing/plan.service';
 import { addDays, isoDay, toDate } from '../common/dates';
 import { PrismaService } from '../prisma/prisma.service';
 import { computeInvoiceLines } from '../invoices/invoice-lines';
@@ -17,6 +18,7 @@ export class RecurringGenerationService {
     private readonly prisma: PrismaService,
     private readonly tenantDb: TenantDb,
     private readonly invoices: InvoicesService,
+    private readonly plans: PlanService,
   ) {}
 
   // Cross-tenant discovery: organization ids only, through a narrow
@@ -33,6 +35,32 @@ export class RecurringGenerationService {
     asOf: string,
     maxRunsPerTemplate = MAX_CATCH_UP,
   ): Promise<{ templates: number; invoices: number }> {
+    // Recurring invoices are a paid-plan feature. When the plan has lapsed the
+    // due templates are paused rather than skipped: resuming needs the paid
+    // plan and skips the runs that were missed, so upgrading later never
+    // produces a burst of back-dated (and possibly auto-sent) invoices.
+    const paid = await this.tenantDb.run({ orgId }, (tx) =>
+      this.plans.isPaid(tx),
+    );
+    if (!paid) {
+      const paused = await this.tenantDb.run({ orgId }, (tx) =>
+        tx.recurringTemplate.updateMany({
+          where: {
+            active: true,
+            deletedAt: null,
+            nextRunOn: { lte: toDate(asOf) },
+          },
+          data: { active: false },
+        }),
+      );
+      if (paused.count > 0) {
+        this.logger.warn(
+          `org ${orgId}: no paid plan, paused ${paused.count} due recurring template(s)`,
+        );
+      }
+      return { templates: 0, invoices: 0 };
+    }
+
     const due = await this.tenantDb.run({ orgId }, (tx) =>
       tx.recurringTemplate.findMany({
         where: {

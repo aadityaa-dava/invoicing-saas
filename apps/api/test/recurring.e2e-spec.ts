@@ -6,6 +6,7 @@ import {
   createAdminPool,
   createAppPool,
   deleteOrganizations,
+  grantPaidPlan,
 } from './support/admin-db';
 import { createTestApp, registerAndLogin, TestApp } from './support/test-app';
 
@@ -42,6 +43,7 @@ describe('Recurring invoice templates (e2e)', () => {
       .send({ name })
       .expect(201);
     orgIds.push(org.body.id);
+    await grantPaidPlan(admin, org.body.id);
     const client = await http()
       .post(`/v1/orgs/${org.body.id}/clients`)
       .set(auth(token))

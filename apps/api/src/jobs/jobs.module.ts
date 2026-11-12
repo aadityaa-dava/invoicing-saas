@@ -2,6 +2,7 @@ import { Inject, Logger, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import type { Env } from '../config/env';
+import { BillingModule } from '../billing/billing.module';
 import { InvoicesModule } from '../invoices/invoices.module';
 import { bullConnection } from '../queue/bull-connection';
 import { JOBS_QUEUE, JOBS_QUEUE_NAME, type JobData } from './jobs.constants';
@@ -10,7 +11,7 @@ import { OverdueService } from './overdue.service';
 import { RecurringGenerationService } from './recurring-generation.service';
 
 @Module({
-  imports: [InvoicesModule],
+  imports: [InvoicesModule, BillingModule],
   providers: [
     OverdueService,
     RecurringGenerationService,

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseEnv } from 'node:util';
@@ -44,4 +45,51 @@ export async function addMember(
 // One connection only, so tenant context cannot leak between statements.
 export function createAppPool(): Pool {
   return new Pool({ connectionString: env.DATABASE_URL, max: 1 });
+}
+
+// Runs one statement inside a transaction scoped to a tenant. Forced row-level
+// security applies to the owner connection too.
+async function inTenant(
+  pool: Pool,
+  orgId: string,
+  sql: string,
+  params: unknown[],
+) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.org_id', $1, true)", [orgId]);
+    await client.query(sql, params);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Puts an organization on the paid plan, as the billing webhook would.
+export async function grantPaidPlan(pool: Pool, orgId: string) {
+  await inTenant(
+    pool,
+    orgId,
+    `INSERT INTO subscriptions
+       (id, org_id, plan, status, stripe_subscription_id, current_period_end, updated_at)
+     VALUES (gen_random_uuid(), $1::uuid, 'pro', 'active', $2, now() + interval '30 days', now())`,
+    [orgId, `sub_test_${randomUUID().replaceAll('-', '')}`],
+  );
+}
+
+export async function setSubscriptionStatus(
+  pool: Pool,
+  orgId: string,
+  status: string,
+) {
+  await inTenant(
+    pool,
+    orgId,
+    'UPDATE subscriptions SET status = $2 WHERE org_id = $1::uuid',
+    [orgId, status],
+  );
 }

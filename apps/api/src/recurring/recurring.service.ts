@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { PlanService } from '../billing/plan.service';
 import { isoDay, todayUtc, toDate } from '../common/dates';
 import type { Prisma, RecurringFrequency } from '../generated/prisma/client';
 import { computeInvoiceLines } from '../invoices/invoice-lines';
@@ -54,7 +55,10 @@ function toApi(t: TemplateWithLines) {
 
 @Injectable()
 export class RecurringService {
-  constructor(private readonly tenantDb: TenantDb) {}
+  constructor(
+    private readonly tenantDb: TenantDb,
+    private readonly plans: PlanService,
+  ) {}
 
   // `today` is injectable so schedule rules can be tested; the HTTP layer
   // always uses the real date.
@@ -71,6 +75,8 @@ export class RecurringService {
     }
     const { lines } = computeInvoiceLines(dto.lineItems);
     return this.tenantDb.run({ userId, orgId }, async (tx) => {
+      // Recurring invoices are a paid-plan feature (ADR-0007).
+      await this.plans.assertPaid(tx);
       await this.assertClient(tx, dto.clientId);
       const template = await tx.recurringTemplate.create({
         data: {
@@ -156,6 +162,8 @@ export class RecurringService {
       let runCount = current.runCount;
       let nextRunOn = current.nextRunOn ? isoDay(current.nextRunOn) : null;
       if (resuming || (endChanged && nextRunOn === null)) {
+        // Turning a template back on is gated like creating one.
+        await this.plans.assertPaid(tx);
         // Resuming, or reviving an ended template: runs missed in the
         // meantime are skipped, never generated in a burst.
         ({ runCount, nextRunOn } = firstRunOnOrAfter(

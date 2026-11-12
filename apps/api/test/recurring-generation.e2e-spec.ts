@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import request from 'supertest';
 import { RecurringGenerationService } from '../src/jobs/recurring-generation.service';
-import { createAdminPool, deleteOrganizations } from './support/admin-db';
+import {
+  createAdminPool,
+  deleteOrganizations,
+  grantPaidPlan,
+} from './support/admin-db';
 import { createTestApp, registerAndLogin, TestApp } from './support/test-app';
 
 interface Org {
@@ -27,6 +31,7 @@ describe('Recurring invoice generation (e2e)', () => {
       .send({ name: `Gen ${randomUUID()}` })
       .expect(201);
     orgIds.push(org.body.id);
+    await grantPaidPlan(admin, org.body.id);
     const client = await http()
       .post(`/v1/orgs/${org.body.id}/clients`)
       .set(auth())
